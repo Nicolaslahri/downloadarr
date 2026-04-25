@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import shutil
 from pathlib import Path
 
 from app.downloaders.base import DownloadResult
@@ -13,41 +14,62 @@ def _download_sync(url: str, dest_dir: str) -> DownloadResult:
 
     Path(dest_dir).mkdir(parents=True, exist_ok=True)
     outtmpl = os.path.join(dest_dir, "%(id)s.%(ext)s")
-    opts = {
+
+    has_ffmpeg = bool(shutil.which("ffmpeg"))
+
+    # Prefer YouTube's native audio formats so we don't need ffmpeg to
+    # transcode. m4a is best for tagging; opus/webm work too. Only fall
+    # back to "bestaudio" (which may need transcoding) when ffmpeg exists.
+    fmt = (
+        "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio[ext=opus]/bestaudio[ext=ogg]/bestaudio"
+        if not has_ffmpeg
+        else "bestaudio/best"
+    )
+
+    opts: dict = {
         "quiet": True,
         "noprogress": True,
-        "format": "bestaudio/best",
+        "format": fmt,
         "outtmpl": outtmpl,
-        "postprocessors": [
+        "noplaylist": True,
+        "ignoreerrors": False,
+    }
+
+    # Only add the FFmpegExtractAudio postprocessor when ffmpeg is around;
+    # without it, yt-dlp errors after the download.
+    if has_ffmpeg:
+        opts["postprocessors"] = [
             {
                 "key": "FFmpegExtractAudio",
                 "preferredcodec": "m4a",
                 "preferredquality": "0",
             }
-        ],
-        "noplaylist": True,
-        "extractor_args": {"youtube": {"skip": ["dash"]}},
-    }
+        ]
+
     with YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=True)
     if not info:
         raise RuntimeError("yt-dlp returned no info")
+
     file_path = ydl.prepare_filename(info)
-    # postprocessor changes extension to m4a
-    final_path = os.path.splitext(file_path)[0] + ".m4a"
-    if not os.path.exists(final_path):
-        # fall back to whatever extension landed
-        for ext in ("opus", "webm", "mp3", "m4a", "ogg"):
-            cand = os.path.splitext(file_path)[0] + "." + ext
+    if has_ffmpeg:
+        # postprocessor changes ext to m4a
+        file_path = os.path.splitext(file_path)[0] + ".m4a"
+
+    if not os.path.exists(file_path):
+        stem = os.path.splitext(file_path)[0]
+        for ext in ("m4a", "opus", "webm", "ogg", "mp3", "aac"):
+            cand = f"{stem}.{ext}"
             if os.path.exists(cand):
-                final_path = cand
+                file_path = cand
                 break
-    size = os.path.getsize(final_path)
+
+    size = os.path.getsize(file_path)
     return DownloadResult(
-        file_path=final_path,
+        file_path=file_path,
         bytes=size,
         bitrate_kbps=int(info.get("abr") or 0) or None,
-        format=os.path.splitext(final_path)[1].lstrip("."),
+        format=os.path.splitext(file_path)[1].lstrip("."),
     )
 
 
