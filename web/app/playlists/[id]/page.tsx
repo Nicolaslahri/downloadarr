@@ -1,10 +1,11 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import useSWR from "swr";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
-import { Clock, Music, RefreshCw } from "lucide-react";
+import { Clock, Music, Play, RefreshCw, Square, Trash2 } from "lucide-react";
+import { useState } from "react";
 import type { PlaylistDetail, Track } from "@/lib/types";
 import { api } from "@/lib/api";
 import { PageShell } from "@/components/page-shell";
@@ -23,11 +24,13 @@ function fmtDuration(s: number | null) {
 
 export default function PlaylistDetailPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const id = Number(params.id);
   const { data, isLoading, mutate } = useSWR<PlaylistDetail>(
     Number.isFinite(id) ? `/playlists/${id}` : null,
     { refreshInterval: 2000 }
   );
+  const [actioning, setActioning] = useState(false);
 
   async function retry(track: Track) {
     try {
@@ -39,28 +42,111 @@ export default function PlaylistDetailPage() {
     }
   }
 
-  const total = data?.tracks.length ?? 0;
-  const done = data?.tracks.filter((t) => t.status === "done").length ?? 0;
+  async function start(limit?: number) {
+    if (actioning) return;
+    setActioning(true);
+    try {
+      const r = await api.startPlaylist(id, limit);
+      toast.success(r.message ?? `Queued ${r.queued} tracks`);
+      mutate();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Start failed");
+    } finally {
+      setActioning(false);
+    }
+  }
+
+  async function stop() {
+    if (actioning) return;
+    setActioning(true);
+    try {
+      const r = await api.stopPlaylist(id);
+      toast.success(`Stopped — ${r.cancelled} task(s) cancelled`);
+      mutate();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Stop failed");
+    } finally {
+      setActioning(false);
+    }
+  }
+
+  async function destroy() {
+    if (!confirm(`Delete this playlist and stop any in-flight downloads?`)) return;
+    if (actioning) return;
+    setActioning(true);
+    try {
+      await api.deletePlaylist(id);
+      toast.success("Deleted");
+      router.push("/playlists");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Delete failed");
+      setActioning(false);
+    }
+  }
+
+  const total = data?.track_count ?? 0;
+  const done = data?.done_count ?? 0;
+  const pending = data?.pending_count ?? 0;
+  const active = data?.active_count ?? 0;
   const failed = data?.tracks.filter((t) => t.status === "failed").length ?? 0;
   const pct = total ? Math.round((done / total) * 100) : 0;
+
+  const startDisabled = actioning || (pending === 0 && active === 0);
+  const stopDisabled = actioning || active === 0;
 
   return (
     <PageShell
       eyebrow={data ? data.source : "loading…"}
       title={data?.name ?? "Loading"}
       description={data?.source_url}
+      actions={
+        data ? (
+          <>
+            {pending > 0 && total > 50 && (
+              <Button variant="outline" size="sm" onClick={() => start(10)} disabled={startDisabled}>
+                Start first 10
+              </Button>
+            )}
+            <Button onClick={() => start()} disabled={startDisabled}>
+              <Play className="h-4 w-4" />
+              {pending > 0 ? `Start (${pending})` : "Start"}
+            </Button>
+            <Button variant="outline" onClick={stop} disabled={stopDisabled}>
+              <Square className="h-4 w-4" /> Stop
+            </Button>
+            <Button variant="ghost" onClick={destroy} disabled={actioning} className="text-danger hover:bg-danger/10">
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </>
+        ) : null
+      }
     >
       {isLoading && <Skeleton className="h-40 w-full" />}
 
       {data && (
         <>
+          {pending === total && total > 0 && (
+            <div className="mb-4 flex items-center gap-3 rounded-lg border border-accent/40 bg-accent/10 p-4">
+              <Play className="h-4 w-4 text-accent" />
+              <div className="flex-1 text-sm text-fg">
+                <span className="font-semibold">{total} tracks resolved.</span>{" "}
+                <span className="text-fg-muted">
+                  Nothing is downloading yet — review the list and press Start when ready.
+                  {total > 50 && " For a big playlist, try Start first 10 to make sure your sources are working."}
+                </span>
+              </div>
+            </div>
+          )}
+
           <Card className="mb-6 p-5">
-            <div className="flex items-center gap-6">
+            <div className="flex flex-wrap items-center gap-6">
               <Stat label="Tracks" value={total} />
+              <Stat label="Pending" value={pending} accent="accent" />
+              <Stat label="Active" value={active} accent="accent" />
               <Stat label="Done" value={done} accent="success" />
               <Stat label="Failed" value={failed} accent="danger" />
               <Stat label="Progress" value={`${pct}%`} accent="accent" />
-              <div className="flex-1">
+              <div className="min-w-[160px] flex-1">
                 <Progress value={pct} />
               </div>
             </div>
@@ -83,7 +169,7 @@ export default function PlaylistDetailPage() {
                     layout
                     initial={{ opacity: 0, y: 4 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.25, delay: Math.min(i * 0.015, 0.4) }}
+                    transition={{ duration: 0.25, delay: Math.min(i * 0.005, 0.4) }}
                     className="group grid grid-cols-[40px_1fr_140px_80px_120px_80px] items-center gap-3 border-b border-border/60 px-4 py-3 transition-colors hover:bg-bg-hover/40"
                   >
                     <div className="font-mono text-xs text-fg-subtle">

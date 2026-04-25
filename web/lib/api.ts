@@ -28,10 +28,22 @@ export const api = {
   health: () => jfetch<{ status: string }>("/health"),
 
   importPlaylist: (url: string) =>
-    jfetch<{ playlist: Playlist; queued: number }>("/playlists/import", {
+    jfetch<{ playlist: Playlist; track_count: number }>("/playlists/import", {
       method: "POST",
       body: JSON.stringify({ url }),
     }),
+
+  startPlaylist: (id: number, limit?: number) =>
+    jfetch<{ queued: number; message?: string }>(`/playlists/${id}/start`, {
+      method: "POST",
+      body: JSON.stringify(limit ? { limit } : {}),
+    }),
+
+  stopPlaylist: (id: number) =>
+    jfetch<{ cancelled: number }>(`/playlists/${id}/stop`, { method: "POST" }),
+
+  deletePlaylist: (id: number) =>
+    jfetch<{ ok: boolean }>(`/playlists/${id}`, { method: "DELETE" }),
 
   listPlaylists: () => jfetch<Playlist[]>("/playlists"),
 

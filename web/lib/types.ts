@@ -30,6 +30,8 @@ export interface Playlist {
   created_at: string;
   track_count?: number;
   done_count?: number;
+  pending_count?: number;
+  active_count?: number;
 }
 
 export interface PlaylistDetail extends Playlist {
