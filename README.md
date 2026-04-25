@@ -40,6 +40,16 @@ The top bar shows a green dot once it can reach the API. Visit `Settings` to wir
 
 You only need par2/unrar if you plan to download from Usenet. yt-dlp and torrent paths don't use them.
 
+## Faster Usenet decode (optional)
+
+The default install ships a pure-Python yEnc decoder — it works, just slower per segment. If you want SAB-grade speed:
+
+```powershell
+pip install -e .[usenet-fast]
+```
+
+This pulls `sabyenc3`. On Windows + recent Python (3.13+) you may need MSVC Build Tools or a prebuilt wheel; if pip can't find one, just stay on the pure-Python path.
+
 ## Torrent engine install
 
 `libtorrent` doesn't ship pip wheels for Windows + recent Python versions, so it's intentionally excluded from the required deps. Install it separately if you want torrent downloads:

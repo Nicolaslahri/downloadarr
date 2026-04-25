@@ -19,11 +19,17 @@ dependencies = [
     "anthropic>=0.42",
     "python-multipart>=0.0.20",
     "sse-starlette>=2.1",
-    "sabyenc3>=5.4",
     "rarfile>=4.2",
 ]
 
 [project.optional-dependencies]
+usenet-fast = [
+    # sabyenc3 ships C-based wheels for most Python versions but on the
+    # newest Python (e.g. 3.13) pip falls back to a source build that
+    # needs MSVC. The pure-Python yEnc decoder we ship works without it,
+    # just slower per segment. Install this extra for faster Usenet.
+    "sabyenc3>=5.4",
+]
 torrents = [
     # libtorrent on Windows must be installed via conda or a prebuilt
     # binary (rasterbar.org). It is intentionally left out of the
