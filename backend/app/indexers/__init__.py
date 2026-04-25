@@ -1,27 +1,47 @@
 from __future__ import annotations
 
 import asyncio
+import json
 
 from app.indexers.base import Candidate, Indexer, SourceKind
-from app.indexers.nzbhydra import NzbHydraIndexer
-from app.indexers.prowlarr import ProwlarrIndexer
+from app.indexers.newznab import NewznabAggregateIndexer, NewznabIndexer
 from app.indexers.spotdl import SpotdlIndexer
+from app.indexers.torznab import TorznabAggregateIndexer, TorznabIndexer
 from app.indexers.ytdlp import YtDlpIndexer
 from app.resolvers.base import ResolvedTrack
 
 __all__ = ["Candidate", "Indexer", "SourceKind", "build_indexers", "search_all"]
 
 
+def _parse_list(raw: str) -> list[dict]:
+    try:
+        data = json.loads(raw or "[]")
+    except Exception:
+        return []
+    return data if isinstance(data, list) else []
+
+
 def build_indexers(cfg: dict[str, str]) -> list[Indexer]:
     indexers: list[Indexer] = [YtDlpIndexer(), SpotdlIndexer()]
-    if cfg.get("prowlarr_url") and cfg.get("prowlarr_api_key"):
-        indexers.append(
-            ProwlarrIndexer(cfg["prowlarr_url"], cfg["prowlarr_api_key"])
-        )
-    if cfg.get("nzbhydra_url") and cfg.get("nzbhydra_api_key"):
-        indexers.append(
-            NzbHydraIndexer(cfg["nzbhydra_url"], cfg["nzbhydra_api_key"])
-        )
+
+    nzb_cfgs = _parse_list(cfg.get("usenet_indexers", "[]"))
+    nzb_inst = [
+        NewznabIndexer(c.get("name", "indexer"), c.get("url", ""), c.get("api_key", ""))
+        for c in nzb_cfgs
+        if c.get("url") and c.get("api_key")
+    ]
+    if nzb_inst:
+        indexers.append(NewznabAggregateIndexer(nzb_inst))
+
+    tor_cfgs = _parse_list(cfg.get("torrent_indexers", "[]"))
+    tor_inst = [
+        TorznabIndexer(c.get("name", "tracker"), c.get("url", ""), c.get("api_key", ""))
+        for c in tor_cfgs
+        if c.get("url")
+    ]
+    if tor_inst:
+        indexers.append(TorznabAggregateIndexer(tor_inst))
+
     return indexers
 
 

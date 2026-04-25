@@ -46,16 +46,40 @@ export interface JobEvent {
   level?: "info" | "warn" | "error";
 }
 
+export interface UsenetIndexer {
+  name: string;
+  url: string;
+  api_key?: string;
+  api_key_set?: boolean;
+}
+
+export interface UsenetServer {
+  name: string;
+  host: string;
+  port: number;
+  ssl: boolean;
+  username: string;
+  password?: string;
+  password_set?: boolean;
+  connections: number;
+}
+
+export interface TorrentIndexer {
+  name: string;
+  url: string;
+  api_key?: string;
+  api_key_set?: boolean;
+}
+
 export interface AppSettings {
   library_path: string;
   quality_profile: "best" | "lossless_first" | "320_only";
   preferred_sources: string[];
   anthropic_api_key_set: boolean;
   spotify_configured: boolean;
-  prowlarr_configured: boolean;
-  nzbhydra_configured: boolean;
-  qbt_configured: boolean;
-  sab_configured: boolean;
+  usenet_indexers: UsenetIndexer[];
+  usenet_servers: UsenetServer[];
+  torrent_indexers: TorrentIndexer[];
 }
 
 export interface SettingsUpdate {
@@ -65,15 +89,9 @@ export interface SettingsUpdate {
   anthropic_api_key?: string;
   spotify_client_id?: string;
   spotify_client_secret?: string;
-  prowlarr_url?: string;
-  prowlarr_api_key?: string;
-  nzbhydra_url?: string;
-  nzbhydra_api_key?: string;
-  qbt_url?: string;
-  qbt_user?: string;
-  qbt_pass?: string;
-  sab_url?: string;
-  sab_api_key?: string;
+  usenet_indexers?: UsenetIndexer[];
+  usenet_servers?: UsenetServer[];
+  torrent_indexers?: TorrentIndexer[];
 }
 
 export interface LibraryEntry {

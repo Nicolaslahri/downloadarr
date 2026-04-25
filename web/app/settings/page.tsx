@@ -6,46 +6,65 @@ import { toast } from "sonner";
 import { motion } from "framer-motion";
 import {
   Brain,
-  Cloud,
-  Download,
   FolderTree,
+  Magnet,
   Music2,
+  Newspaper,
+  Plus,
   Save,
   Server,
   Sliders,
   Sparkles,
+  Trash2,
 } from "lucide-react";
 import { api } from "@/lib/api";
-import type { AppSettings, SettingsUpdate } from "@/lib/types";
+import type {
+  AppSettings,
+  SettingsUpdate,
+  TorrentIndexer,
+  UsenetIndexer,
+  UsenetServer,
+} from "@/lib/types";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 export default function SettingsPage() {
   const { data, mutate } = useSWR<AppSettings>("/settings");
-  const [patch, setPatch] = useState<SettingsUpdate>({});
+  const [draft, setDraft] = useState<SettingsUpdate>({});
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (data) {
-      setPatch((p) => ({
-        library_path: data.library_path,
-        quality_profile: data.quality_profile,
-        preferred_sources: data.preferred_sources,
-        ...p,
-      }));
-    }
+    if (!data) return;
+    setDraft((d) => ({
+      library_path: data.library_path,
+      quality_profile: data.quality_profile,
+      preferred_sources: data.preferred_sources,
+      usenet_indexers: data.usenet_indexers,
+      usenet_servers: data.usenet_servers,
+      torrent_indexers: data.torrent_indexers,
+      ...d,
+    }));
   }, [data]);
+
+  function set<K extends keyof SettingsUpdate>(key: K, value: SettingsUpdate[K]) {
+    setDraft((d) => ({ ...d, [key]: value }));
+  }
+  function togglePref(name: string) {
+    const list = draft.preferred_sources ?? data?.preferred_sources ?? [];
+    set("preferred_sources", list.includes(name) ? list.filter((s) => s !== name) : [...list, name]);
+  }
 
   async function save() {
     setSaving(true);
     try {
-      const next = await api.updateSettings(patch);
+      const next = await api.updateSettings(draft);
       mutate(next);
-      setPatch({});
+      setDraft({});
       toast.success("Settings saved");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Save failed");
@@ -54,24 +73,14 @@ export default function SettingsPage() {
     }
   }
 
-  function set<K extends keyof SettingsUpdate>(key: K, value: SettingsUpdate[K]) {
-    setPatch((p) => ({ ...p, [key]: value }));
-  }
-
-  function togglePref(name: string) {
-    const list = patch.preferred_sources ?? data?.preferred_sources ?? [];
-    const next = list.includes(name) ? list.filter((s) => s !== name) : [...list, name];
-    set("preferred_sources", next);
-  }
-
   if (!data) return null;
-  const prefs = patch.preferred_sources ?? data.preferred_sources;
+  const prefs = draft.preferred_sources ?? data.preferred_sources;
 
   return (
     <PageShell
       eyebrow="config"
       title="Settings"
-      description="Wire up your indexers, download clients, AI provider, and library destination."
+      description="Wire up your Usenet and torrent sources. The app does the indexing and downloading itself — no Prowlarr, SAB, or qBittorrent needed."
       actions={
         <Button onClick={save} disabled={saving}>
           <Save className="h-4 w-4" /> {saving ? "Saving…" : "Save changes"}
@@ -82,10 +91,10 @@ export default function SettingsPage() {
         <TabsList>
           <TabsTrigger value="library"><FolderTree className="h-3.5 w-3.5" /> Library</TabsTrigger>
           <TabsTrigger value="quality"><Sliders className="h-3.5 w-3.5" /> Quality</TabsTrigger>
+          <TabsTrigger value="usenet"><Newspaper className="h-3.5 w-3.5" /> Usenet</TabsTrigger>
+          <TabsTrigger value="torrents"><Magnet className="h-3.5 w-3.5" /> Torrents</TabsTrigger>
           <TabsTrigger value="ai"><Brain className="h-3.5 w-3.5" /> AI</TabsTrigger>
           <TabsTrigger value="streaming"><Music2 className="h-3.5 w-3.5" /> Streaming</TabsTrigger>
-          <TabsTrigger value="indexers"><Server className="h-3.5 w-3.5" /> Indexers</TabsTrigger>
-          <TabsTrigger value="clients"><Download className="h-3.5 w-3.5" /> Clients</TabsTrigger>
         </TabsList>
 
         <TabsContent value="library">
@@ -95,15 +104,15 @@ export default function SettingsPage() {
               <CardDescription>
                 Final path for tagged downloads. Layout is{" "}
                 <code className="rounded bg-bg-hover px-1 font-mono text-xs">
-                  {"{library}/{Artist}/{Album}/{NN - Title}.{ext}"}
+                  {"{library}/{Artist}/{Album}/{Title}.{ext}"}
                 </code>
                 .
               </CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-2">
+            <CardContent>
               <Field label="Path on disk">
                 <Input
-                  value={patch.library_path ?? ""}
+                  value={draft.library_path ?? ""}
                   onChange={(e) => set("library_path", e.target.value)}
                   placeholder="/library or C:\\Music"
                   className="font-mono"
@@ -119,27 +128,21 @@ export default function SettingsPage() {
               <CardTitle>Quality profile</CardTitle>
               <CardDescription>How aggressively to chase higher-fidelity files.</CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-3">
+            <CardContent className="grid gap-4">
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                 {QUALITY_OPTIONS.map((opt) => {
-                  const active = (patch.quality_profile ?? data.quality_profile) === opt.value;
+                  const active = (draft.quality_profile ?? data.quality_profile) === opt.value;
                   return (
                     <button
                       key={opt.value}
                       type="button"
                       onClick={() => set("quality_profile", opt.value)}
                       className={`relative rounded-lg border p-4 text-left transition-all ${
-                        active
-                          ? "border-accent bg-accent/10"
-                          : "border-border bg-bg-subtle/40 hover:bg-bg-hover"
+                        active ? "border-accent bg-accent/10" : "border-border bg-bg-subtle/40 hover:bg-bg-hover"
                       }`}
                     >
                       {active && (
-                        <motion.div
-                          layoutId="quality-active"
-                          className="absolute inset-0 rounded-lg ring-1 ring-accent"
-                          transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                        />
+                        <motion.div layoutId="quality-active" className="absolute inset-0 rounded-lg ring-1 ring-accent" transition={{ type: "spring", stiffness: 380, damping: 30 }} />
                       )}
                       <div className="font-medium">{opt.label}</div>
                       <div className="mt-1 text-xs text-fg-muted">{opt.hint}</div>
@@ -176,6 +179,25 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="usenet">
+          <UsenetIndexersCard
+            value={draft.usenet_indexers ?? data.usenet_indexers}
+            onChange={(v) => set("usenet_indexers", v)}
+          />
+          <div className="h-4" />
+          <UsenetServersCard
+            value={draft.usenet_servers ?? data.usenet_servers}
+            onChange={(v) => set("usenet_servers", v)}
+          />
+        </TabsContent>
+
+        <TabsContent value="torrents">
+          <TorrentIndexersCard
+            value={draft.torrent_indexers ?? data.torrent_indexers}
+            onChange={(v) => set("torrent_indexers", v)}
+          />
+        </TabsContent>
+
         <TabsContent value="ai">
           <Card>
             <CardHeader>
@@ -200,7 +222,7 @@ export default function SettingsPage() {
                 <Input
                   type="password"
                   placeholder="sk-ant-…"
-                  value={patch.anthropic_api_key ?? ""}
+                  value={draft.anthropic_api_key ?? ""}
                   onChange={(e) => set("anthropic_api_key", e.target.value)}
                   className="font-mono"
                 />
@@ -221,12 +243,10 @@ export default function SettingsPage() {
             <CardContent className="grid gap-3">
               <Field
                 label="Spotify Client ID"
-                badge={<Badge tone={data.spotify_configured ? "success" : "ghost"}>
-                  {data.spotify_configured ? "configured" : "not set"}
-                </Badge>}
+                badge={<Badge tone={data.spotify_configured ? "success" : "ghost"}>{data.spotify_configured ? "configured" : "not set"}</Badge>}
               >
                 <Input
-                  value={patch.spotify_client_id ?? ""}
+                  value={draft.spotify_client_id ?? ""}
                   onChange={(e) => set("spotify_client_id", e.target.value)}
                   className="font-mono"
                 />
@@ -234,7 +254,7 @@ export default function SettingsPage() {
               <Field label="Spotify Client Secret">
                 <Input
                   type="password"
-                  value={patch.spotify_client_secret ?? ""}
+                  value={draft.spotify_client_secret ?? ""}
                   onChange={(e) => set("spotify_client_secret", e.target.value)}
                   className="font-mono"
                   placeholder="••••"
@@ -242,65 +262,6 @@ export default function SettingsPage() {
               </Field>
             </CardContent>
           </Card>
-        </TabsContent>
-
-        <TabsContent value="indexers">
-          <div className="grid gap-4 md:grid-cols-2">
-            <IndexerCard
-              title="Prowlarr"
-              hint="Aggregates torrent indexers. Point at your Prowlarr instance."
-              status={data.prowlarr_configured}
-              urlValue={patch.prowlarr_url ?? ""}
-              keyValue={patch.prowlarr_api_key ?? ""}
-              onUrl={(v) => set("prowlarr_url", v)}
-              onKey={(v) => set("prowlarr_api_key", v)}
-            />
-            <IndexerCard
-              title="NZBHydra2"
-              hint="Aggregates Usenet indexers (NZBGeek etc.)."
-              status={data.nzbhydra_configured}
-              urlValue={patch.nzbhydra_url ?? ""}
-              keyValue={patch.nzbhydra_api_key ?? ""}
-              onUrl={(v) => set("nzbhydra_url", v)}
-              onKey={(v) => set("nzbhydra_api_key", v)}
-            />
-          </div>
-        </TabsContent>
-
-        <TabsContent value="clients">
-          <div className="grid gap-4 md:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Cloud className="h-4 w-4" /> qBittorrent
-                  <Badge tone={data.qbt_configured ? "success" : "ghost"}>
-                    {data.qbt_configured ? "configured" : "not set"}
-                  </Badge>
-                </CardTitle>
-                <CardDescription>WebUI URL & login. Used for torrent downloads.</CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-2">
-                <Field label="URL"><Input value={patch.qbt_url ?? ""} onChange={(e) => set("qbt_url", e.target.value)} className="font-mono" /></Field>
-                <Field label="Username"><Input value={patch.qbt_user ?? ""} onChange={(e) => set("qbt_user", e.target.value)} /></Field>
-                <Field label="Password"><Input type="password" value={patch.qbt_pass ?? ""} onChange={(e) => set("qbt_pass", e.target.value)} placeholder="••••" /></Field>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Cloud className="h-4 w-4" /> SABnzbd
-                  <Badge tone={data.sab_configured ? "success" : "ghost"}>
-                    {data.sab_configured ? "configured" : "not set"}
-                  </Badge>
-                </CardTitle>
-                <CardDescription>Usenet download client.</CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-2">
-                <Field label="URL"><Input value={patch.sab_url ?? ""} onChange={(e) => set("sab_url", e.target.value)} className="font-mono" /></Field>
-                <Field label="API key"><Input type="password" value={patch.sab_api_key ?? ""} onChange={(e) => set("sab_api_key", e.target.value)} placeholder="••••" /></Field>
-              </CardContent>
-            </Card>
-          </div>
         </TabsContent>
       </Tabs>
     </PageShell>
@@ -321,9 +282,7 @@ function Field({
   return (
     <label className="block">
       <div className="mb-1.5 flex items-center justify-between gap-2">
-        <span className="font-mono text-[10px] uppercase tracking-widest text-fg-muted">
-          {label}
-        </span>
+        <span className="font-mono text-[10px] uppercase tracking-widest text-fg-muted">{label}</span>
         {badge}
       </div>
       {children}
@@ -332,53 +291,292 @@ function Field({
   );
 }
 
-function IndexerCard({
+function ListShell({
+  icon: Icon,
   title,
-  hint,
-  status,
-  urlValue,
-  keyValue,
-  onUrl,
-  onKey,
+  description,
+  empty,
+  onAdd,
+  children,
+  count,
 }: {
+  icon: React.ComponentType<{ className?: string }>;
   title: string;
-  hint: string;
-  status: boolean;
-  urlValue: string;
-  keyValue: string;
-  onUrl: (v: string) => void;
-  onKey: (v: string) => void;
+  description: string;
+  empty: string;
+  onAdd: () => void;
+  children: React.ReactNode;
+  count: number;
 }) {
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Server className="h-4 w-4" /> {title}
-          <Badge tone={status ? "success" : "ghost"}>
-            {status ? "configured" : "not set"}
-          </Badge>
-        </CardTitle>
-        <CardDescription>{hint}</CardDescription>
+      <CardHeader className="flex-row items-start justify-between">
+        <div>
+          <CardTitle className="flex items-center gap-2">
+            <Icon className="h-4 w-4" /> {title}
+            <Badge tone={count > 0 ? "success" : "ghost"}>
+              {count} {count === 1 ? "entry" : "entries"}
+            </Badge>
+          </CardTitle>
+          <CardDescription>{description}</CardDescription>
+        </div>
+        <Button variant="outline" size="sm" onClick={onAdd}>
+          <Plus className="h-3.5 w-3.5" /> Add
+        </Button>
       </CardHeader>
-      <CardContent className="grid gap-2">
-        <Field label="URL">
-          <Input
-            value={urlValue}
-            onChange={(e) => onUrl(e.target.value)}
-            className="font-mono"
-            placeholder="http://localhost:9696"
-          />
-        </Field>
-        <Field label="API key">
-          <Input
-            type="password"
-            value={keyValue}
-            onChange={(e) => onKey(e.target.value)}
-            placeholder="••••"
-          />
-        </Field>
+      <CardContent>
+        {count === 0 ? (
+          <div className="rounded-lg border border-dashed border-border bg-bg-subtle/30 p-6 text-center text-sm text-fg-muted">
+            {empty}
+          </div>
+        ) : (
+          <div className="grid gap-3">{children}</div>
+        )}
       </CardContent>
     </Card>
+  );
+}
+
+function UsenetIndexersCard({
+  value,
+  onChange,
+}: {
+  value: UsenetIndexer[];
+  onChange: (v: UsenetIndexer[]) => void;
+}) {
+  function update(i: number, patch: Partial<UsenetIndexer>) {
+    onChange(value.map((row, idx) => (idx === i ? { ...row, ...patch } : row)));
+  }
+  function remove(i: number) {
+    onChange(value.filter((_, idx) => idx !== i));
+  }
+  function add() {
+    onChange([
+      ...value,
+      { name: "NZBGeek", url: "https://api.nzbgeek.info", api_key: "" },
+    ]);
+  }
+  return (
+    <ListShell
+      icon={Newspaper}
+      title="Usenet indexers"
+      description="Newznab-compatible search APIs (NZBGeek, DrunkenSlug, NZBPlanet, etc.). Add as many as you want — every search fans out across all of them in parallel."
+      empty="No indexers yet. Add one to enable Usenet search."
+      onAdd={add}
+      count={value.length}
+    >
+      {value.map((row, i) => (
+        <motion.div
+          key={i}
+          layout
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="grid gap-2 rounded-lg border border-border bg-bg-subtle/40 p-3 md:grid-cols-[140px_1fr_220px_36px]"
+        >
+          <Field label="Name">
+            <Input value={row.name} onChange={(e) => update(i, { name: e.target.value })} />
+          </Field>
+          <Field label="API URL">
+            <Input
+              value={row.url}
+              onChange={(e) => update(i, { url: e.target.value })}
+              placeholder="https://api.nzbgeek.info"
+              className="font-mono"
+            />
+          </Field>
+          <Field
+            label="API key"
+            badge={<Badge tone={row.api_key_set ? "success" : "ghost"}>{row.api_key_set ? "saved" : "not set"}</Badge>}
+          >
+            <Input
+              type="password"
+              value={row.api_key ?? ""}
+              onChange={(e) => update(i, { api_key: e.target.value })}
+              placeholder={row.api_key_set ? "•••• (leave blank to keep)" : "key"}
+              className="font-mono"
+            />
+          </Field>
+          <div className="flex items-end pb-1">
+            <Button variant="ghost" size="icon" onClick={() => remove(i)} className="h-9 w-9 text-danger hover:bg-danger/10">
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        </motion.div>
+      ))}
+    </ListShell>
+  );
+}
+
+function UsenetServersCard({
+  value,
+  onChange,
+}: {
+  value: UsenetServer[];
+  onChange: (v: UsenetServer[]) => void;
+}) {
+  function update(i: number, patch: Partial<UsenetServer>) {
+    onChange(value.map((row, idx) => (idx === i ? { ...row, ...patch } : row)));
+  }
+  function remove(i: number) {
+    onChange(value.filter((_, idx) => idx !== i));
+  }
+  function add() {
+    onChange([
+      ...value,
+      {
+        name: "Newshosting",
+        host: "news.newshosting.com",
+        port: 563,
+        ssl: true,
+        username: "",
+        password: "",
+        connections: 20,
+      },
+    ]);
+  }
+  return (
+    <ListShell
+      icon={Server}
+      title="Usenet news servers"
+      description="NNTP servers used for the actual download. Each connection is a TLS socket — Newshosting, Eweka, UsenetServer, Frugal, etc."
+      empty="No servers yet. Add one before you can download from Usenet."
+      onAdd={add}
+      count={value.length}
+    >
+      {value.map((row, i) => (
+        <motion.div
+          key={i}
+          layout
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="grid gap-2 rounded-lg border border-border bg-bg-subtle/40 p-3"
+        >
+          <div className="grid gap-2 md:grid-cols-[140px_1fr_90px_70px_36px]">
+            <Field label="Name">
+              <Input value={row.name} onChange={(e) => update(i, { name: e.target.value })} />
+            </Field>
+            <Field label="Host">
+              <Input
+                value={row.host}
+                onChange={(e) => update(i, { host: e.target.value })}
+                className="font-mono"
+                placeholder="news.example.com"
+              />
+            </Field>
+            <Field label="Port">
+              <Input
+                type="number"
+                value={row.port}
+                onChange={(e) => update(i, { port: Number(e.target.value) || 563 })}
+                className="font-mono"
+              />
+            </Field>
+            <Field label="SSL">
+              <div className="flex h-10 items-center">
+                <Switch checked={row.ssl} onCheckedChange={(v) => update(i, { ssl: v })} />
+              </div>
+            </Field>
+            <div className="flex items-end pb-1">
+              <Button variant="ghost" size="icon" onClick={() => remove(i)} className="h-9 w-9 text-danger hover:bg-danger/10">
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+          <div className="grid gap-2 md:grid-cols-[1fr_1fr_120px]">
+            <Field label="Username">
+              <Input value={row.username} onChange={(e) => update(i, { username: e.target.value })} className="font-mono" />
+            </Field>
+            <Field
+              label="Password"
+              badge={<Badge tone={row.password_set ? "success" : "ghost"}>{row.password_set ? "saved" : "not set"}</Badge>}
+            >
+              <Input
+                type="password"
+                value={row.password ?? ""}
+                onChange={(e) => update(i, { password: e.target.value })}
+                placeholder={row.password_set ? "•••• (leave blank to keep)" : ""}
+                className="font-mono"
+              />
+            </Field>
+            <Field label="Connections">
+              <Input
+                type="number"
+                value={row.connections}
+                onChange={(e) => update(i, { connections: Number(e.target.value) || 10 })}
+                className="font-mono"
+              />
+            </Field>
+          </div>
+        </motion.div>
+      ))}
+    </ListShell>
+  );
+}
+
+function TorrentIndexersCard({
+  value,
+  onChange,
+}: {
+  value: TorrentIndexer[];
+  onChange: (v: TorrentIndexer[]) => void;
+}) {
+  function update(i: number, patch: Partial<TorrentIndexer>) {
+    onChange(value.map((row, idx) => (idx === i ? { ...row, ...patch } : row)));
+  }
+  function remove(i: number) {
+    onChange(value.filter((_, idx) => idx !== i));
+  }
+  function add() {
+    onChange([...value, { name: "Tracker", url: "", api_key: "" }]);
+  }
+  return (
+    <ListShell
+      icon={Magnet}
+      title="Torrent indexers"
+      description="Torznab-compatible APIs. Searches go straight to each indexer; the embedded libtorrent engine handles the download (magnet or .torrent) inside this app."
+      empty="No torrent indexers configured."
+      onAdd={add}
+      count={value.length}
+    >
+      {value.map((row, i) => (
+        <motion.div
+          key={i}
+          layout
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="grid gap-2 rounded-lg border border-border bg-bg-subtle/40 p-3 md:grid-cols-[140px_1fr_220px_36px]"
+        >
+          <Field label="Name">
+            <Input value={row.name} onChange={(e) => update(i, { name: e.target.value })} />
+          </Field>
+          <Field label="API URL">
+            <Input
+              value={row.url}
+              onChange={(e) => update(i, { url: e.target.value })}
+              className="font-mono"
+              placeholder="https://… (Torznab endpoint)"
+            />
+          </Field>
+          <Field
+            label="API key"
+            badge={<Badge tone={row.api_key_set ? "success" : "ghost"}>{row.api_key_set ? "saved" : "not set"}</Badge>}
+          >
+            <Input
+              type="password"
+              value={row.api_key ?? ""}
+              onChange={(e) => update(i, { api_key: e.target.value })}
+              placeholder={row.api_key_set ? "•••• (leave blank to keep)" : "optional"}
+              className="font-mono"
+            />
+          </Field>
+          <div className="flex items-end pb-1">
+            <Button variant="ghost" size="icon" onClick={() => remove(i)} className="h-9 w-9 text-danger hover:bg-danger/10">
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        </motion.div>
+      ))}
+    </ListShell>
   );
 }
 
@@ -388,4 +586,4 @@ const QUALITY_OPTIONS = [
   { value: "320_only" as const, label: "320 kbps minimum", hint: "Reject anything below 320 kbps. Strict." },
 ];
 
-const ALL_SOURCES = ["ytdlp", "spotdl", "torrent", "nzb", "zotify"];
+const ALL_SOURCES = ["ytdlp", "torrent", "nzb", "spotdl"];

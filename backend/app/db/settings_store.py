@@ -1,3 +1,8 @@
+from __future__ import annotations
+
+import json
+from typing import Any
+
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -6,20 +11,17 @@ from app.db.models import SettingsRow
 DEFAULTS: dict[str, str] = {
     "library_path": "",
     "quality_profile": "best",
-    "preferred_sources": "ytdlp,spotdl,torrent,nzb",
+    "preferred_sources": "ytdlp,torrent,nzb",
     "anthropic_api_key": "",
     "spotify_client_id": "",
     "spotify_client_secret": "",
-    "prowlarr_url": "",
-    "prowlarr_api_key": "",
-    "nzbhydra_url": "",
-    "nzbhydra_api_key": "",
-    "qbt_url": "",
-    "qbt_user": "",
-    "qbt_pass": "",
-    "sab_url": "",
-    "sab_api_key": "",
+    # JSON-encoded lists of source configs; UI manages via list editors.
+    "usenet_indexers": "[]",
+    "usenet_servers": "[]",
+    "torrent_indexers": "[]",
 }
+
+LIST_KEYS = {"usenet_indexers", "usenet_servers", "torrent_indexers"}
 
 
 async def load_all(session: AsyncSession) -> dict[str, str]:
@@ -51,23 +53,23 @@ async def patch(session: AsyncSession, updates: dict[str, str]) -> None:
         await set_value(session, k, v)
 
 
+def parse_list(raw: str) -> list[dict[str, Any]]:
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return []
+    return data if isinstance(data, list) else []
+
+
 def merge_with_env(stored: dict[str, str], env_settings) -> dict[str, str]:
-    """DB settings take precedence; fall back to env if DB value is empty."""
     out = dict(stored)
     fallbacks = {
         "library_path": env_settings.library_path,
         "anthropic_api_key": env_settings.anthropic_api_key,
         "spotify_client_id": env_settings.spotify_client_id,
         "spotify_client_secret": env_settings.spotify_client_secret,
-        "prowlarr_url": env_settings.prowlarr_url,
-        "prowlarr_api_key": env_settings.prowlarr_api_key,
-        "nzbhydra_url": env_settings.nzbhydra_url,
-        "nzbhydra_api_key": env_settings.nzbhydra_api_key,
-        "qbt_url": env_settings.qbt_url,
-        "qbt_user": env_settings.qbt_user,
-        "qbt_pass": env_settings.qbt_pass,
-        "sab_url": env_settings.sab_url,
-        "sab_api_key": env_settings.sab_api_key,
     }
     for k, v in fallbacks.items():
         if not out.get(k):
