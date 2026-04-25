@@ -40,6 +40,14 @@ The top bar shows a green dot once it can reach the API. Visit `Settings` to wir
 
 You only need par2/unrar if you plan to download from Usenet. yt-dlp and torrent paths don't use them.
 
+## Torrent engine install
+
+`libtorrent` doesn't ship pip wheels for Windows + recent Python versions, so it's intentionally excluded from the required deps. Install it separately if you want torrent downloads:
+
+- **Conda (recommended on Windows)**: `conda install -c conda-forge libtorrent` inside the same environment. If you're using a regular `venv`, switch to a conda env (or run `pip install miniforge` style flow) for this one dep.
+- **Pre-built wheel**: search for a libtorrent wheel matching your Python version (cp312 etc.) and `pip install` it directly.
+- **Skip torrents entirely**: leave it uninstalled — the rest of the app (yt-dlp, Usenet, AI extract, all UI) works fine. Torrent downloads will surface a clean error pointing here until you install.
+
 ## What works out of the box
 
 | Feature                                       | Needs                            |

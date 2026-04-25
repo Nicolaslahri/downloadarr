@@ -23,7 +23,9 @@ def _import_lt():
     except Exception as e:
         raise RuntimeError(
             "libtorrent is not installed in this Python environment. "
-            "Install it with `pip install libtorrent` and restart the backend. "
+            "On Windows, install via conda: `conda install -c conda-forge libtorrent`, "
+            "or grab a prebuilt wheel for your Python version. "
+            "See README → 'Torrent engine install'. "
             f"({e!r})"
         )
 

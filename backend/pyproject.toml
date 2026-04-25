@@ -21,10 +21,16 @@ dependencies = [
     "sse-starlette>=2.1",
     "sabyenc3>=5.4",
     "rarfile>=4.2",
-    "libtorrent>=2.0",
 ]
 
 [project.optional-dependencies]
+torrents = [
+    # libtorrent on Windows must be installed via conda or a prebuilt
+    # binary (rasterbar.org). It is intentionally left out of the
+    # required deps so `pip install -e .` works on plain CPython.
+    # See README → "Torrent engine install".
+    "libtorrent>=2.0",
+]
 ai = [
     "faster-whisper>=1.1",
 ]
