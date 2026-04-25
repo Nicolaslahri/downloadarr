@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from app.resolvers.base import ResolvedPlaylist, ResolvedTrack
 
@@ -21,10 +21,25 @@ def _is_yt(url: str) -> bool:
 
 
 def _is_playlist(url: str) -> bool:
+    """A URL is a playlist ONLY when it points at /playlist OR is a watch
+    URL with `list=` and no `v=`. A watch URL with both v= and list= (the
+    common "I'm watching this song from a playlist/mix" form) is treated
+    as a single video — otherwise YouTube's auto-generated `RD*` radio
+    mixes turn one song into hundreds of unrelated tracks.
+    """
     if not _is_yt(url):
         return False
     p = urlparse(url)
-    return "list=" in (p.query or "") or "/playlist" in p.path
+    if "/playlist" in p.path:
+        return True
+    qs = parse_qs(p.query)
+    if "list" in qs and "v" not in qs:
+        list_id = qs["list"][0]
+        # Reject auto-generated radio/mix lists
+        if list_id.startswith(("RD", "UU", "FL")):
+            return False
+        return True
+    return False
 
 
 def _extract_sync(url: str) -> ResolvedPlaylist:
@@ -50,7 +65,6 @@ def _extract_sync(url: str) -> ResolvedPlaylist:
         if not title:
             continue
         artist = (e.get("uploader") or e.get("channel") or "Unknown").strip()
-        # Many YT music titles are "Artist - Title" — split if so.
         if " - " in title:
             maybe_artist, _, maybe_title = title.partition(" - ")
             if len(maybe_artist) < 80:

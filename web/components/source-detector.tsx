@@ -10,7 +10,7 @@ const ICON: Record<DetectedSource["kind"], React.ComponentType<{ className?: str
   youtube_music: Youtube,
   youtube: Youtube,
   soundcloud: Cloud,
-  ai_video: Sparkles,
+  youtube_video: Sparkles,
   unknown: Link2,
 };
 
@@ -20,7 +20,7 @@ const TONE: Record<DetectedSource["kind"], string> = {
   youtube_music: "text-danger border-danger/30 bg-danger/10",
   youtube: "text-danger border-danger/30 bg-danger/10",
   soundcloud: "text-warn border-warn/30 bg-warn/10",
-  ai_video: "text-accent border-accent/40 bg-accent/10 animate-pulseGlow",
+  youtube_video: "text-accent border-accent/40 bg-accent/10",
   unknown: "text-fg-subtle border-border bg-bg-hover",
 };
 
