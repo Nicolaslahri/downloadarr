@@ -7,6 +7,43 @@ import httpx
 
 from app.indexers.base import Candidate, SourceKind
 from app.resolvers.base import ResolvedTrack
+from app.services.events import bus
+
+_AUDIO_CATS = "3000,3010,3040,3050"
+
+
+def _parse(xml_text: str, indexer_name: str) -> list[Candidate]:
+    try:
+        root = ET.fromstring(xml_text)
+    except Exception:
+        return []
+    if root.tag.lower() == "error":
+        return []
+    out: list[Candidate] = []
+    for item in root.iter("item"):
+        title = (item.findtext("title") or "").strip()
+        link = (item.findtext("link") or "").strip()
+        if not title or not link:
+            continue
+        attrs = {a.get("name"): a.get("value") for a in item.findall("{*}attr")}
+        seeders = int(attrs.get("seeders") or 0)
+        magnet = attrs.get("magneturl") or ""
+        url = magnet or link
+        out.append(
+            Candidate(
+                source=SourceKind.torrent,
+                url=url,
+                title=title,
+                score=0.4 + min(seeders / 200, 0.5),
+                extra={
+                    "indexer": indexer_name,
+                    "seeders": seeders,
+                    "size": int(attrs.get("size") or 0),
+                    "is_magnet": bool(magnet),
+                },
+            )
+        )
+    return out
 
 
 class TorznabIndexer:
@@ -19,48 +56,45 @@ class TorznabIndexer:
         self.base_url = url.rstrip("/")
         self.api_key = api_key
 
+    async def _query(self, client: httpx.AsyncClient, params: dict) -> list[Candidate]:
+        try:
+            r = await client.get(f"{self.base_url}/api", params=params)
+        except Exception as e:
+            bus.emit("log", f"{self.name} request failed: {e}", level="warn")
+            return []
+        if r.status_code != 200:
+            return []
+        return _parse(r.text, self.name)
+
     async def search(self, track: ResolvedTrack) -> list[Candidate]:
         if not self.base_url:
             return []
-        params: dict[str, str | int] = {
-            "t": "music",
-            "q": f"{track.artist} {track.title}",
-            "limit": 25,
-        }
+        common: dict = {"o": "xml", "limit": 50, "cat": _AUDIO_CATS}
         if self.api_key:
-            params["apikey"] = self.api_key
-        try:
-            async with httpx.AsyncClient(timeout=15) as client:
-                r = await client.get(f"{self.base_url}/api", params=params)
-                r.raise_for_status()
-                root = ET.fromstring(r.text)
-        except Exception:
-            return []
-        out: list[Candidate] = []
-        for item in root.iter("item"):
-            title = (item.findtext("title") or "").strip()
-            link = (item.findtext("link") or "").strip()
-            if not title or not link:
-                continue
-            attrs = {a.get("name"): a.get("value") for a in item.findall("{*}attr")}
-            seeders = int(attrs.get("seeders") or 0)
-            magnet = attrs.get("magneturl") or ""
-            url = magnet or link
-            out.append(
-                Candidate(
-                    source=SourceKind.torrent,
-                    url=url,
-                    title=title,
-                    score=0.4 + min(seeders / 200, 0.5),
-                    extra={
-                        "indexer": self.name,
-                        "seeders": seeders,
-                        "size": int(attrs.get("size") or 0),
-                        "is_magnet": bool(magnet),
-                    },
-                )
-            )
-        return out
+            common["apikey"] = self.api_key
+        attempts: list[dict] = []
+        if track.album:
+            attempts.append({**common, "t": "music", "artist": track.artist, "album": track.album})
+        attempts.append({**common, "t": "music", "artist": track.artist})
+        if track.album:
+            attempts.append({**common, "t": "search", "q": f"{track.artist} {track.album}"})
+        attempts.append({**common, "t": "search", "q": f"{track.artist} {track.title}"})
+
+        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
+            for params in attempts:
+                results = await self._query(client, params)
+                if results:
+                    label = params.get("q") or f"{params.get('artist', '')} / {params.get('album', '*')}"
+                    bus.emit(
+                        "log",
+                        f"{self.name}: {len(results)} hits for {label!r} (t={params.get('t')})",
+                    )
+                    return results
+        bus.emit(
+            "log",
+            f"{self.name}: no hits for '{track.artist} – {track.title}' across {len(attempts)} queries",
+        )
+        return []
 
 
 class TorznabAggregateIndexer:
