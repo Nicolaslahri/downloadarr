@@ -48,9 +48,10 @@ class _Conn:
         self.reader, self.writer = await asyncio.open_connection(
             self.cfg.host, self.cfg.port, ssl=ctx
         )
-        await self._read_status(2)
+        # Banner: 200 = posting allowed, 201 = read-only access
+        await self._read_status(200, 201)
         if self.cfg.username:
-            await self._cmd(f"AUTHINFO USER {self.cfg.username}", expect={381, 281})
+            await self._cmd(f"AUTHINFO USER {self.cfg.username}", expect={281, 381})
             if self.cfg.password:
                 await self._cmd(f"AUTHINFO PASS {self.cfg.password}", expect={281})
 
