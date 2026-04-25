@@ -72,7 +72,16 @@ class _Conn:
         assert self.writer and self.reader
         self.writer.write(line.encode("ascii", "ignore") + _LINE_END)
         await self.writer.drain()
-        return await self._read_status(*expect)
+        try:
+            return await self._read_status(*expect)
+        except NntpError as e:
+            # Surface which command was rejected — without echoing secrets.
+            verb = line.split(" ", 1)[0]
+            arg = line.split(" ", 2)[1] if " " in line else ""
+            label = f"{verb} {arg}".strip() if verb in ("AUTHINFO",) and not arg.startswith("PASS") else verb
+            if verb == "AUTHINFO" and arg == "PASS":
+                label = "AUTHINFO PASS"
+            raise NntpError(f"after {label}: {e}") from e
 
     async def _read_status(self, *expect: int) -> str:
         assert self.reader
