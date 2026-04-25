@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
-from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.config import settings as env_settings
 from app.db.session import get_session

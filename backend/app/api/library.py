@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Iterator
 
 from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.config import settings as env_settings
 from app.db.session import get_session

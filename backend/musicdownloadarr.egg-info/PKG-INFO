@@ -1,0 +1,27 @@
+Metadata-Version: 2.4
+Name: musicdownloadarr
+Version: 0.1.0
+Requires-Python: >=3.12
+Requires-Dist: fastapi>=0.115
+Requires-Dist: uvicorn[standard]>=0.32
+Requires-Dist: sqlmodel>=0.0.22
+Requires-Dist: aiosqlite>=0.20
+Requires-Dist: asyncpg>=0.30
+Requires-Dist: alembic>=1.14
+Requires-Dist: pydantic-settings>=2.6
+Requires-Dist: arq>=0.26
+Requires-Dist: redis>=5.2
+Requires-Dist: httpx>=0.28
+Requires-Dist: yt-dlp>=2025.1.15
+Requires-Dist: spotipy>=2.24
+Requires-Dist: ytmusicapi>=1.8
+Requires-Dist: mutagen>=1.47
+Requires-Dist: anthropic>=0.42
+Requires-Dist: python-multipart>=0.0.20
+Requires-Dist: sse-starlette>=2.1
+Provides-Extra: ai
+Requires-Dist: faster-whisper>=1.1; extra == "ai"
+Provides-Extra: dev
+Requires-Dist: pytest>=8.3; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.25; extra == "dev"
+Requires-Dist: ruff>=0.8; extra == "dev"

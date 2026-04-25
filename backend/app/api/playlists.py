@@ -5,8 +5,8 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import func, select
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.config import settings as env_settings
 from app.db.models import Playlist, Track, TrackStatus
