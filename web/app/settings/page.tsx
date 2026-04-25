@@ -32,6 +32,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { TestButton } from "@/components/test-button";
 
 export default function SettingsPage() {
   const { data, mutate } = useSWR<AppSettings>("/settings");
@@ -209,7 +210,7 @@ export default function SettingsPage() {
                 tracklists.
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="grid gap-3">
               <Field
                 label="Anthropic API key"
                 hint={data.anthropic_api_key_set ? "Stored — leave blank to keep" : "Required for AI extraction"}
@@ -227,6 +228,9 @@ export default function SettingsPage() {
                   className="font-mono"
                 />
               </Field>
+              <div>
+                <TestButton onTest={() => api.testAnthropic({ api_key: draft.anthropic_api_key })} />
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -260,6 +264,16 @@ export default function SettingsPage() {
                   placeholder="••••"
                 />
               </Field>
+              <div>
+                <TestButton
+                  onTest={() =>
+                    api.testSpotify({
+                      client_id: draft.spotify_client_id,
+                      client_secret: draft.spotify_client_secret,
+                    })
+                  }
+                />
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -371,35 +385,48 @@ function UsenetIndexersCard({
           layout
           initial={{ opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}
-          className="grid gap-2 rounded-lg border border-border bg-bg-subtle/40 p-3 md:grid-cols-[140px_1fr_220px_36px]"
+          className="grid gap-2 rounded-lg border border-border bg-bg-subtle/40 p-3"
         >
-          <Field label="Name">
-            <Input value={row.name} onChange={(e) => update(i, { name: e.target.value })} />
-          </Field>
-          <Field label="API URL">
-            <Input
-              value={row.url}
-              onChange={(e) => update(i, { url: e.target.value })}
-              placeholder="https://api.nzbgeek.info"
-              className="font-mono"
+          <div className="grid gap-2 md:grid-cols-[140px_1fr_220px_36px]">
+            <Field label="Name">
+              <Input value={row.name} onChange={(e) => update(i, { name: e.target.value })} />
+            </Field>
+            <Field label="API URL">
+              <Input
+                value={row.url}
+                onChange={(e) => update(i, { url: e.target.value })}
+                placeholder="https://api.nzbgeek.info"
+                className="font-mono"
+              />
+            </Field>
+            <Field
+              label="API key"
+              badge={<Badge tone={row.api_key_set ? "success" : "ghost"}>{row.api_key_set ? "saved" : "not set"}</Badge>}
+            >
+              <Input
+                type="password"
+                value={row.api_key ?? ""}
+                onChange={(e) => update(i, { api_key: e.target.value })}
+                placeholder={row.api_key_set ? "•••• (leave blank to keep)" : "key"}
+                className="font-mono"
+              />
+            </Field>
+            <div className="flex items-end pb-1">
+              <Button variant="ghost" size="icon" onClick={() => remove(i)} className="h-9 w-9 text-danger hover:bg-danger/10">
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <TestButton
+              onTest={() =>
+                api.testUsenetIndexer({
+                  name: row.name,
+                  url: row.url,
+                  api_key: row.api_key,
+                })
+              }
             />
-          </Field>
-          <Field
-            label="API key"
-            badge={<Badge tone={row.api_key_set ? "success" : "ghost"}>{row.api_key_set ? "saved" : "not set"}</Badge>}
-          >
-            <Input
-              type="password"
-              value={row.api_key ?? ""}
-              onChange={(e) => update(i, { api_key: e.target.value })}
-              placeholder={row.api_key_set ? "•••• (leave blank to keep)" : "key"}
-              className="font-mono"
-            />
-          </Field>
-          <div className="flex items-end pb-1">
-            <Button variant="ghost" size="icon" onClick={() => remove(i)} className="h-9 w-9 text-danger hover:bg-danger/10">
-              <Trash2 className="h-4 w-4" />
-            </Button>
           </div>
         </motion.div>
       ))}
@@ -507,6 +534,20 @@ function UsenetServersCard({
               />
             </Field>
           </div>
+          <div className="flex justify-end">
+            <TestButton
+              onTest={() =>
+                api.testUsenetServer({
+                  name: row.name,
+                  host: row.host,
+                  port: row.port,
+                  ssl: row.ssl,
+                  username: row.username,
+                  password: row.password,
+                })
+              }
+            />
+          </div>
         </motion.div>
       ))}
     </ListShell>
@@ -544,35 +585,48 @@ function TorrentIndexersCard({
           layout
           initial={{ opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}
-          className="grid gap-2 rounded-lg border border-border bg-bg-subtle/40 p-3 md:grid-cols-[140px_1fr_220px_36px]"
+          className="grid gap-2 rounded-lg border border-border bg-bg-subtle/40 p-3"
         >
-          <Field label="Name">
-            <Input value={row.name} onChange={(e) => update(i, { name: e.target.value })} />
-          </Field>
-          <Field label="API URL">
-            <Input
-              value={row.url}
-              onChange={(e) => update(i, { url: e.target.value })}
-              className="font-mono"
-              placeholder="https://… (Torznab endpoint)"
+          <div className="grid gap-2 md:grid-cols-[140px_1fr_220px_36px]">
+            <Field label="Name">
+              <Input value={row.name} onChange={(e) => update(i, { name: e.target.value })} />
+            </Field>
+            <Field label="API URL">
+              <Input
+                value={row.url}
+                onChange={(e) => update(i, { url: e.target.value })}
+                className="font-mono"
+                placeholder="https://… (Torznab endpoint)"
+              />
+            </Field>
+            <Field
+              label="API key"
+              badge={<Badge tone={row.api_key_set ? "success" : "ghost"}>{row.api_key_set ? "saved" : "not set"}</Badge>}
+            >
+              <Input
+                type="password"
+                value={row.api_key ?? ""}
+                onChange={(e) => update(i, { api_key: e.target.value })}
+                placeholder={row.api_key_set ? "•••• (leave blank to keep)" : "optional"}
+                className="font-mono"
+              />
+            </Field>
+            <div className="flex items-end pb-1">
+              <Button variant="ghost" size="icon" onClick={() => remove(i)} className="h-9 w-9 text-danger hover:bg-danger/10">
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <TestButton
+              onTest={() =>
+                api.testTorrentIndexer({
+                  name: row.name,
+                  url: row.url,
+                  api_key: row.api_key,
+                })
+              }
             />
-          </Field>
-          <Field
-            label="API key"
-            badge={<Badge tone={row.api_key_set ? "success" : "ghost"}>{row.api_key_set ? "saved" : "not set"}</Badge>}
-          >
-            <Input
-              type="password"
-              value={row.api_key ?? ""}
-              onChange={(e) => update(i, { api_key: e.target.value })}
-              placeholder={row.api_key_set ? "•••• (leave blank to keep)" : "optional"}
-              className="font-mono"
-            />
-          </Field>
-          <div className="flex items-end pb-1">
-            <Button variant="ghost" size="icon" onClick={() => remove(i)} className="h-9 w-9 text-danger hover:bg-danger/10">
-              <Trash2 className="h-4 w-4" />
-            </Button>
           </div>
         </motion.div>
       ))}

@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import xml.etree.ElementTree as ET
 
+import httpx
 from fastapi import APIRouter
 from pydantic import BaseModel
 
 from app.config import settings as env_settings
 from app.db.settings_store import load_all, merge_with_env, parse_list, patch as patch_settings
+from app.services.usenet.nntp import NntpConfig, _Conn
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -159,3 +163,182 @@ async def update_settings(body: SettingsPatch) -> SettingsOut:
 
     cfg = merge_with_env(load_all(), env_settings)
     return _to_out(cfg)
+
+
+# ---------------------------------------------------------------------------
+# Test-connection endpoints
+# ---------------------------------------------------------------------------
+
+
+class TestResult(BaseModel):
+    ok: bool
+    message: str
+    detail: dict | None = None
+
+
+def _resolve_secret(list_key: str, name: str, secret_field: str) -> str:
+    """If the UI submits a row with a blank secret but a name that matches
+    a previously-saved row, use the stored secret for the test."""
+    if not name:
+        return ""
+    for e in parse_list(load_all().get(list_key, "[]")):
+        if (e.get("name") or "").lower() == name.lower():
+            return e.get(secret_field) or ""
+    return ""
+
+
+class NewznabTest(BaseModel):
+    name: str = ""
+    url: str
+    api_key: str = ""
+
+
+async def _newznab_caps(url: str, api_key: str) -> TestResult:
+    try:
+        async with httpx.AsyncClient(timeout=12, follow_redirects=True) as client:
+            r = await client.get(
+                f"{url.rstrip('/')}/api",
+                params={"t": "caps", "apikey": api_key} if api_key else {"t": "caps"},
+            )
+    except Exception as e:
+        return TestResult(ok=False, message=f"Connection failed: {e}")
+    if r.status_code == 401:
+        return TestResult(ok=False, message="API key rejected (HTTP 401)")
+    if r.status_code != 200:
+        return TestResult(ok=False, message=f"HTTP {r.status_code}: {r.text[:160]}")
+    try:
+        root = ET.fromstring(r.text)
+    except Exception:
+        return TestResult(ok=False, message="Response is not valid Newznab/Torznab XML")
+    if root.tag.lower() == "error":
+        msg = root.get("description") or "Indexer returned an error"
+        return TestResult(ok=False, message=msg)
+    server_name = ""
+    for child in root:
+        tag = child.tag.split("}", 1)[-1].lower()
+        if tag == "server":
+            server_name = child.get("title") or child.get("appversion") or ""
+            break
+    cats = sum(1 for c in root.iter() if c.tag.split("}", 1)[-1].lower() == "category")
+    return TestResult(
+        ok=True,
+        message=f"Connected{' to ' + server_name if server_name else ''} — {cats} categories",
+        detail={"server": server_name, "categories": cats},
+    )
+
+
+@router.post("/test/usenet-indexer", response_model=TestResult)
+async def test_usenet_indexer(body: NewznabTest) -> TestResult:
+    if not body.url:
+        return TestResult(ok=False, message="URL required")
+    api_key = body.api_key or _resolve_secret("usenet_indexers", body.name, "api_key")
+    if not api_key:
+        return TestResult(ok=False, message="API key required")
+    return await _newznab_caps(body.url, api_key)
+
+
+@router.post("/test/torrent-indexer", response_model=TestResult)
+async def test_torrent_indexer(body: NewznabTest) -> TestResult:
+    if not body.url:
+        return TestResult(ok=False, message="URL required")
+    api_key = body.api_key or _resolve_secret("torrent_indexers", body.name, "api_key")
+    return await _newznab_caps(body.url, api_key)
+
+
+class NntpTest(BaseModel):
+    name: str = ""
+    host: str
+    port: int = 563
+    ssl: bool = True
+    username: str = ""
+    password: str = ""
+
+
+@router.post("/test/usenet-server", response_model=TestResult)
+async def test_usenet_server(body: NntpTest) -> TestResult:
+    if not body.host:
+        return TestResult(ok=False, message="Host required")
+    pwd = body.password or _resolve_secret("usenet_servers", body.name, "password")
+    cfg = NntpConfig(
+        host=body.host,
+        port=body.port,
+        ssl=body.ssl,
+        username=body.username,
+        password=pwd,
+        connections=1,
+    )
+    conn = _Conn(cfg)
+    try:
+        await asyncio.wait_for(conn.connect(), timeout=15)
+    except asyncio.TimeoutError:
+        return TestResult(ok=False, message="Timeout connecting to NNTP server")
+    except Exception as e:
+        return TestResult(ok=False, message=f"NNTP error: {e}")
+    finally:
+        try:
+            await conn.close()
+        except Exception:
+            pass
+    auth_state = "authenticated" if cfg.username else "anonymous"
+    return TestResult(
+        ok=True,
+        message=f"Connected to {cfg.host}:{cfg.port} ({auth_state})",
+    )
+
+
+class AnthropicTest(BaseModel):
+    api_key: str = ""
+
+
+@router.post("/test/anthropic", response_model=TestResult)
+async def test_anthropic(body: AnthropicTest) -> TestResult:
+    api_key = body.api_key or load_all().get("anthropic_api_key", "")
+    if not api_key:
+        return TestResult(ok=False, message="API key required")
+    try:
+        from anthropic import AsyncAnthropic
+
+        client = AsyncAnthropic(api_key=api_key)
+        msg = await client.messages.create(
+            model="claude-haiku-4-5",
+            max_tokens=4,
+            messages=[{"role": "user", "content": "ping"}],
+        )
+        usage = getattr(msg, "usage", None)
+        in_tok = getattr(usage, "input_tokens", None) if usage else None
+        return TestResult(
+            ok=True,
+            message=f"Authenticated with Claude (model={msg.model})",
+            detail={"input_tokens": in_tok},
+        )
+    except Exception as e:
+        return TestResult(ok=False, message=f"Anthropic error: {e}")
+
+
+class SpotifyTest(BaseModel):
+    client_id: str = ""
+    client_secret: str = ""
+
+
+@router.post("/test/spotify", response_model=TestResult)
+async def test_spotify(body: SpotifyTest) -> TestResult:
+    cid = body.client_id or load_all().get("spotify_client_id", "")
+    sec = body.client_secret or load_all().get("spotify_client_secret", "")
+    if not cid or not sec:
+        return TestResult(ok=False, message="Client ID and secret required")
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.post(
+                "https://accounts.spotify.com/api/token",
+                data={"grant_type": "client_credentials"},
+                auth=(cid, sec),
+            )
+        if r.status_code == 200:
+            return TestResult(ok=True, message="Spotify credentials valid")
+        return TestResult(
+            ok=False,
+            message=f"Spotify rejected credentials (HTTP {r.status_code})",
+            detail={"body": r.text[:200]},
+        )
+    except Exception as e:
+        return TestResult(ok=False, message=f"Spotify error: {e}")

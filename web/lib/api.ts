@@ -61,7 +61,50 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(patch),
     }),
+
+  testUsenetIndexer: (body: { name?: string; url: string; api_key?: string }) =>
+    jfetch<TestResult>("/settings/test/usenet-indexer", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  testUsenetServer: (body: {
+    name?: string;
+    host: string;
+    port: number;
+    ssl: boolean;
+    username?: string;
+    password?: string;
+  }) =>
+    jfetch<TestResult>("/settings/test/usenet-server", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  testTorrentIndexer: (body: { name?: string; url: string; api_key?: string }) =>
+    jfetch<TestResult>("/settings/test/torrent-indexer", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  testAnthropic: (body: { api_key?: string }) =>
+    jfetch<TestResult>("/settings/test/anthropic", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  testSpotify: (body: { client_id?: string; client_secret?: string }) =>
+    jfetch<TestResult>("/settings/test/spotify", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 };
+
+export interface TestResult {
+  ok: boolean;
+  message: string;
+  detail?: Record<string, unknown> | null;
+}
 
 export function jobsEventSource(): EventSource | null {
   if (typeof window === "undefined") return null;
