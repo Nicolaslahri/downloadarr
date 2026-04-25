@@ -42,7 +42,7 @@ export default function Home() {
     <PageShell
       eyebrow="paste · resolve · download"
       title="Where streaming meets your hard drive."
-      description="Drop any Spotify, Apple Music, YouTube Music, or SoundCloud link — or a YouTube video with a tracklist — and we'll dispatch the right resolver, search every configured source, and tag the files when they land."
+      description="Paste any Spotify, Apple Music, YouTube Music, or SoundCloud playlist (or a YouTube video tracklist) — we resolve it to artist/title pairs, then search your configured Usenet and torrent indexers for HQ audio (FLAC / 320). YouTube is for tracklisting, never for the actual download."
     >
       <Card className="relative overflow-hidden p-1.5">
         <div className="pointer-events-none absolute inset-0 bg-grid-fade opacity-60" />

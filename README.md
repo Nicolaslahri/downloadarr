@@ -4,6 +4,8 @@ Self-hosted music librarian. Paste a Spotify, Apple Music, YouTube Music, or Sou
 
 No Prowlarr, no SABnzbd, no qBittorrent. You enter your NZBGeek/Newshosting/Torznab credentials directly; the app does the searching and downloading itself.
 
+Streaming services and YouTube are used **only to enumerate the tracklist** — the actual audio is always pulled from Usenet or torrents at FLAC / 320 kbps quality.
+
 ## Run locally (zero-infra dev)
 
 The backend defaults to a local SQLite file at `backend/.data/musicdl.db`, so you can run both halves without Docker.
@@ -34,11 +36,12 @@ The top bar shows a green dot once it can reach the API. Visit `Settings` to wir
 
 ## External binaries you'll want on PATH
 
-- **`ffmpeg`** — required by `yt-dlp` for audio extraction. ([download](https://www.gyan.dev/ffmpeg/builds/))
+Only matter for the Usenet path:
+
 - **`par2`** — required for repairing PAR2-protected Usenet releases. ([par2cmdline-turbo](https://github.com/animetosho/par2cmdline-turbo/releases))
 - **`unrar`** — required for extracting RAR'd Usenet releases. ([RARLab](https://www.rarlab.com/rar_add.htm))
 
-You only need par2/unrar if you plan to download from Usenet. yt-dlp and torrent paths don't use them.
+If you skip these, Usenet downloads of plain audio files (no PAR2, no RAR) still work; archived/repaired releases will fail with a clear pointer.
 
 ## Faster Usenet decode (optional)
 
@@ -60,39 +63,47 @@ This pulls `sabyenc3`. On Windows + recent Python (3.13+) you may need MSVC Buil
 
 ## What works out of the box
 
-| Feature                                       | Needs                            |
-| --------------------------------------------- | -------------------------------- |
-| YouTube / YouTube Music playlist import       | nothing                          |
-| SoundCloud playlist import                    | nothing                          |
-| yt-dlp track download (m4a)                   | `ffmpeg` on PATH                 |
-| Apple Music playlist (best-effort scrape)     | nothing                          |
-| Spotify playlist import                       | Spotify client id + secret       |
-| AI tracklist from a YouTube video             | Anthropic API key                |
-| Torrent search & download                     | Torznab indexer + libtorrent     |
-| Usenet search & download                      | Newznab indexer + NNTP server + par2/unrar |
+**Tracklist resolution** (no audio is downloaded here — just artist/title pairs):
+
+| Resolver                          | Needs                            |
+| --------------------------------- | -------------------------------- |
+| YouTube / YT Music playlist       | nothing                          |
+| SoundCloud playlist               | nothing                          |
+| Apple Music (best-effort scrape)  | nothing                          |
+| Spotify                           | Spotify client id + secret       |
+| AI extract from a YouTube video   | Anthropic API key                |
+
+**Audio download** (HQ — FLAC, 320 kbps MP3, etc.):
+
+| Source             | Needs                                                          |
+| ------------------ | -------------------------------------------------------------- |
+| Usenet             | one or more Newznab indexers + one or more NNTP news servers   |
+| Torrents           | one or more Torznab indexers + `libtorrent` (see install note) |
+
+You need at least one of Usenet or torrents configured before downloads will work. Without them, the app will resolve playlists and queue tracks, but each track will fail with `No Usenet or torrent indexers configured`.
 
 ## How it's wired
 
 ```
                    ┌────────────────────┐
    user paste url ─┤  /playlists/import  ├─► Resolver dispatch ─► tracks in DB
-                   └────────────────────┘                   │
+                   └────────────────────┘   (Spotify/Apple/YT/SC: read tracklist)
+                                                            │
                                                             ▼
                                             asyncio task per track
                                                             │
                                                             ▼
-                                       Indexer fan-out — yt-dlp,
-                                       Newznab (your NZB indexers),
-                                       Torznab (your trackers)
+                                       Indexer fan-out:
+                                         • Newznab (your NZB indexers)
+                                         • Torznab (your torrent indexers)
                                                             │
                                                             ▼
                                        Score & rank by quality profile
                                                             │
                                                             ▼
-                              Downloader picks itself by source kind:
-                               • yt-dlp  → direct
-                               • nzb     → NNTP fetch + yEnc + par2/unrar
-                               • torrent → embedded libtorrent
+                              Downloader picks by source kind:
+                                • nzb     → NNTP fetch + yEnc + par2/unrar
+                                • torrent → embedded libtorrent
                                                             │
                                                             ▼
                                        mutagen tag → organize into library

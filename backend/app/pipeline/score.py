@@ -7,23 +7,14 @@ QUALITY_BIAS: dict[str, dict[SourceKind, float]] = {
     "best": {
         SourceKind.torrent: 0.9,
         SourceKind.nzb: 0.85,
-        SourceKind.spotdl: 0.7,
-        SourceKind.ytdlp: 0.6,
-        SourceKind.zotify: 0.7,
     },
     "lossless_first": {
         SourceKind.torrent: 1.0,
         SourceKind.nzb: 0.95,
-        SourceKind.spotdl: 0.5,
-        SourceKind.ytdlp: 0.4,
-        SourceKind.zotify: 0.5,
     },
     "320_only": {
         SourceKind.torrent: 0.8,
         SourceKind.nzb: 0.75,
-        SourceKind.spotdl: 0.7,
-        SourceKind.ytdlp: 0.65,
-        SourceKind.zotify: 0.65,
     },
 }
 

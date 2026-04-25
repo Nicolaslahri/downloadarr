@@ -5,9 +5,7 @@ import json
 
 from app.indexers.base import Candidate, Indexer, SourceKind
 from app.indexers.newznab import NewznabAggregateIndexer, NewznabIndexer
-from app.indexers.spotdl import SpotdlIndexer
 from app.indexers.torznab import TorznabAggregateIndexer, TorznabIndexer
-from app.indexers.ytdlp import YtDlpIndexer
 from app.resolvers.base import ResolvedTrack
 
 __all__ = ["Candidate", "Indexer", "SourceKind", "build_indexers", "search_all"]
@@ -22,7 +20,9 @@ def _parse_list(raw: str) -> list[dict]:
 
 
 def build_indexers(cfg: dict[str, str]) -> list[Indexer]:
-    indexers: list[Indexer] = [YtDlpIndexer(), SpotdlIndexer()]
+    """HQ-audio sources only. yt-dlp is used elsewhere for playlist
+    enumeration but never as an audio source — we chase FLAC/320 here."""
+    indexers: list[Indexer] = []
 
     nzb_cfgs = _parse_list(cfg.get("usenet_indexers", "[]"))
     nzb_inst = [
@@ -47,6 +47,8 @@ def build_indexers(cfg: dict[str, str]) -> list[Indexer]:
 
 async def search_all(track: ResolvedTrack, cfg: dict[str, str]) -> list[Candidate]:
     indexers = build_indexers(cfg)
+    if not indexers:
+        return []
     results = await asyncio.gather(
         *(i.search(track) for i in indexers),
         return_exceptions=True,

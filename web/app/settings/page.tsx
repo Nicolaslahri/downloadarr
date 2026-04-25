@@ -586,4 +586,4 @@ const QUALITY_OPTIONS = [
   { value: "320_only" as const, label: "320 kbps minimum", hint: "Reject anything below 320 kbps. Strict." },
 ];
 
-const ALL_SOURCES = ["ytdlp", "torrent", "nzb", "spotdl"];
+const ALL_SOURCES = ["nzb", "torrent"];

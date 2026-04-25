@@ -79,9 +79,23 @@ async def process_track(track_id: int) -> None:
         return
 
     await _set_status(track_id, TrackStatus.resolving)
+
+    from app.indexers import build_indexers
+    if not build_indexers(cfg):
+        await _set_status(
+            track_id,
+            TrackStatus.failed,
+            error="No Usenet or torrent indexers configured. Add one in Settings.",
+        )
+        return
+
     candidates = await search_all(rt, cfg)
     if not candidates:
-        await _set_status(track_id, TrackStatus.failed, error="no candidates from any indexer")
+        await _set_status(
+            track_id,
+            TrackStatus.failed,
+            error="No matches from any configured indexer for this track.",
+        )
         return
 
     profile = cfg.get("quality_profile") or "best"

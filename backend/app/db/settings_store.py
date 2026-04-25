@@ -11,7 +11,7 @@ from app.db.models import SettingsRow
 DEFAULTS: dict[str, str] = {
     "library_path": "",
     "quality_profile": "best",
-    "preferred_sources": "ytdlp,torrent,nzb",
+    "preferred_sources": "nzb,torrent",
     "anthropic_api_key": "",
     "spotify_client_id": "",
     "spotify_client_secret": "",
