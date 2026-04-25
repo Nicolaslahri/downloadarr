@@ -11,4 +11,6 @@ library/
 *.sqlite
 backend/.data/
 backend/.venv/
+backend/*.egg-info/
+*.egg-info/
 .DS_Store
