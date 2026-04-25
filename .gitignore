@@ -9,4 +9,6 @@ node_modules/
 downloads/
 library/
 *.sqlite
+backend/.data/
+backend/.venv/
 .DS_Store

@@ -1,13 +1,22 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _default_data_dir() -> Path:
+    p = Path.cwd() / ".data"
+    p.mkdir(exist_ok=True)
+    return p
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    database_url: str = "postgresql+asyncpg://musicdl:musicdl@postgres:5432/musicdl"
-    redis_url: str = "redis://redis:6379/0"
-    library_path: str = "/library"
-    downloads_path: str = "/downloads"
+    database_url: str = f"sqlite+aiosqlite:///{_default_data_dir() / 'musicdl.db'}"
+    redis_url: str = ""
+
+    library_path: str = str(_default_data_dir() / "library")
+    downloads_path: str = str(_default_data_dir() / "downloads")
 
     anthropic_api_key: str = ""
 
@@ -27,5 +36,10 @@ class Settings(BaseSettings):
     sab_url: str = ""
     sab_api_key: str = ""
 
+    cors_origins: list[str] = ["*"]
+
 
 settings = Settings()
+
+Path(settings.library_path).mkdir(parents=True, exist_ok=True)
+Path(settings.downloads_path).mkdir(parents=True, exist_ok=True)

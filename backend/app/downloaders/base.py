@@ -8,6 +8,8 @@ from app.indexers.base import Candidate
 class DownloadResult:
     file_path: str
     bytes: int
+    bitrate_kbps: int | None = None
+    format: str | None = None
 
 
 class Downloader(Protocol):

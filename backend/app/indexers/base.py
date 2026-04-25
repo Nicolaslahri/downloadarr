@@ -1,6 +1,6 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional, Protocol
+from typing import Any, Optional, Protocol
 
 from app.resolvers.base import ResolvedTrack
 
@@ -22,7 +22,7 @@ class Candidate:
     format: Optional[str] = None
     duration_s: Optional[int] = None
     score: float = 0.0
-    extra: dict = None  # type: ignore[assignment]
+    extra: dict[str, Any] = field(default_factory=dict)
 
 
 class Indexer(Protocol):

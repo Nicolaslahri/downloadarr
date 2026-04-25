@@ -9,6 +9,7 @@ class ResolvedTrack:
     album: Optional[str] = None
     duration_s: Optional[int] = None
     isrc: Optional[str] = None
+    source_url_hint: Optional[str] = None
 
 
 @dataclass

@@ -6,7 +6,88 @@
   color-scheme: dark;
 }
 
-html, body {
-  background: #0a0a0a;
-  color: #ededed;
+* {
+  -webkit-font-smoothing: antialiased;
+}
+
+html,
+body {
+  background: #08080b;
+  color: #e8e8ee;
+  font-feature-settings: "cv11", "ss01";
+}
+
+body {
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(124, 92, 255, 0.15), transparent),
+    radial-gradient(ellipse 60% 40% at 90% 80%, rgba(34, 211, 165, 0.08), transparent),
+    linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
+  background-size: auto, auto, 48px 48px, 48px 48px;
+  background-attachment: fixed;
+  min-height: 100vh;
+}
+
+.glass {
+  background: rgba(13, 13, 18, 0.6);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+}
+
+.glow-border {
+  box-shadow:
+    0 0 0 1px rgba(124, 92, 255, 0.18),
+    0 0 24px -4px rgba(124, 92, 255, 0.35);
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.03) 0%,
+    rgba(255, 255, 255, 0.08) 50%,
+    rgba(255, 255, 255, 0.03) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2.5s linear infinite;
+}
+
+.scrollbar-slim::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scrollbar-slim::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-slim::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+}
+.scrollbar-slim::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.gradient-text {
+  background: linear-gradient(120deg, #ffffff 0%, #c4b8ff 50%, #7c5cff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  background-size: 200% 200%;
+  animation: gradient 8s ease infinite;
+}
+
+.dotted-divider {
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.12) 1px, transparent 1px);
+  background-size: 8px 8px;
+  background-repeat: repeat-x;
+  background-position: 0 50%;
+  height: 1px;
+}
+
+@keyframes orbit {
+  from {
+    transform: rotate(0deg) translateX(60px) rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg) translateX(60px) rotate(-360deg);
+  }
 }

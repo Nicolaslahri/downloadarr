@@ -34,5 +34,11 @@ class Track(SQLModel, table=True):
     status: TrackStatus = Field(default=TrackStatus.pending, index=True)
     file_path: Optional[str] = None
     error: Optional[str] = None
+    source_url_hint: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class SettingsRow(SQLModel, table=True):
+    key: str = Field(primary_key=True)
+    value: str = ""

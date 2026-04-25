@@ -8,7 +8,7 @@ SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=
 
 
 async def init_db() -> None:
-    from app.db import models  # noqa: F401  ensure models register
+    from app.db import models  # noqa: F401
 
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
