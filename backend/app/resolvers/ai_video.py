@@ -36,28 +36,46 @@ def _fetch_metadata_sync(url: str) -> dict:
     return info or {}
 
 
-_TRACKLIST_LINE = re.compile(
+_TIMESTAMPED_LINE = re.compile(
     r"""
     ^\s*
-    (?:\d+[.)\]:]?\s*)?
-    (?:\(?\d{1,2}:\d{2}(?::\d{2})?\)?\s*[-–—:]?\s*)?
-    ([^—–\-:]{2,80}?)
-    \s*[—–\-:]\s*
-    ([^—–\-:][^\n]{1,120}?)
-    \s*$
+    (?:\d+[.)\]]\s+)?                    # optional leading track number
+    \(?(\d{1,2}:\d{2}(?::\d{2})?)\)?     # REQUIRED timestamp (0:00 or 00:00:00)
+    \s*[-–—:.)]?\s*
+    (.+?)\s*$                            # everything after = the entry
     """,
     re.MULTILINE | re.VERBOSE,
 )
 
+_NOISE = ("http://", "https://", "www.", "subscribe", "follow", "instagram", "twitter",
+          "facebook", "tiktok", "spotify.com", "apple.com", "youtube.com", "youtu.be",
+          "merch", "tour dates", "discord")
+
+
+def _looks_like_noise(text: str) -> bool:
+    low = text.lower()
+    return any(n in low for n in _NOISE)
+
 
 def _heuristic_extract(description: str) -> list[ResolvedTrack]:
+    """Only treat lines as tracklist entries when they have a leading
+    timestamp — that's the universal hallmark of a tracklist. Anything
+    else (URL-laden descriptions, social spam) is not a tracklist."""
     out: list[ResolvedTrack] = []
-    for m in _TRACKLIST_LINE.finditer(description):
-        artist = m.group(1).strip().strip("'\"")
-        title = m.group(2).strip().strip("'\"")
-        if len(artist) < 2 or len(title) < 2:
+    for m in _TIMESTAMPED_LINE.finditer(description):
+        chunk = m.group(2).strip().strip("'\"")
+        if not chunk or _looks_like_noise(chunk):
             continue
-        if any(skip in artist.lower() for skip in ["http", "www", "subscribe"]):
+        artist = "Unknown"
+        title = chunk
+        for sep in (" - ", " – ", " — ", " by "):
+            if sep in chunk:
+                a, _, t = chunk.partition(sep)
+                a, t = a.strip().strip("'\""), t.strip().strip("'\"")
+                if 1 < len(a) < 80 and 1 < len(t) < 120 and not _looks_like_noise(a):
+                    artist, title = a, t
+                break
+        if len(title) < 2 or _looks_like_noise(title):
             continue
         out.append(ResolvedTrack(artist=artist, title=title))
     return out
@@ -178,18 +196,18 @@ class AIVideoResolver:
             if tracks:
                 bus.emit("log", f"video: {len(tracks)} tracks from chapters")
 
-        if len(tracks) < 5:
+        if len(tracks) < 3:
             heur = _heuristic_extract(description)
-            if len(heur) >= 5:
+            if len(heur) >= 3:
                 tracks = heur
-                bus.emit("log", f"video: {len(tracks)} tracks via regex tracklist")
+                bus.emit("log", f"video: {len(tracks)} tracks via timestamped tracklist")
 
-        if len(tracks) < 5 and self.api_key and len(description) > 50:
+        if len(tracks) < 3 and self.api_key and len(description) > 200:
             llm = await _llm_extract(
                 f"Video title: {title}\n\nDescription:\n{description}",
                 self.api_key,
             )
-            if len(llm) >= 5:
+            if len(llm) >= 3:
                 tracks = llm
                 bus.emit("log", f"video: {len(tracks)} tracks via Claude")
 
