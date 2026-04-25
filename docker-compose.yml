@@ -1,0 +1,96 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-musicdl}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-musicdl}
+      POSTGRES_DB: ${POSTGRES_DB:-musicdl}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-musicdl}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-musicdl}:${POSTGRES_PASSWORD:-musicdl}@postgres:5432/${POSTGRES_DB:-musicdl}
+      REDIS_URL: redis://redis:6379/0
+      LIBRARY_PATH: /library
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID:-}
+      SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET:-}
+      PROWLARR_URL: ${PROWLARR_URL:-}
+      PROWLARR_API_KEY: ${PROWLARR_API_KEY:-}
+      NZBHYDRA_URL: ${NZBHYDRA_URL:-}
+      NZBHYDRA_API_KEY: ${NZBHYDRA_API_KEY:-}
+      QBT_URL: ${QBT_URL:-}
+      QBT_USER: ${QBT_USER:-}
+      QBT_PASS: ${QBT_PASS:-}
+      SAB_URL: ${SAB_URL:-}
+      SAB_API_KEY: ${SAB_API_KEY:-}
+    volumes:
+      - ${LIBRARY_PATH:-./library}:/library
+      - ./downloads:/downloads
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  worker:
+    build:
+      context: ./backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-musicdl}:${POSTGRES_PASSWORD:-musicdl}@postgres:5432/${POSTGRES_DB:-musicdl}
+      REDIS_URL: redis://redis:6379/0
+      LIBRARY_PATH: /library
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID:-}
+      SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET:-}
+      PROWLARR_URL: ${PROWLARR_URL:-}
+      PROWLARR_API_KEY: ${PROWLARR_API_KEY:-}
+      NZBHYDRA_URL: ${NZBHYDRA_URL:-}
+      NZBHYDRA_API_KEY: ${NZBHYDRA_API_KEY:-}
+      QBT_URL: ${QBT_URL:-}
+      QBT_USER: ${QBT_USER:-}
+      QBT_PASS: ${QBT_PASS:-}
+      SAB_URL: ${SAB_URL:-}
+      SAB_API_KEY: ${SAB_API_KEY:-}
+    volumes:
+      - ${LIBRARY_PATH:-./library}:/library
+      - ./downloads:/downloads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: arq app.workers.tasks.WorkerSettings
+
+  web:
+    build:
+      context: ./web
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      INTERNAL_API_URL: http://api:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
