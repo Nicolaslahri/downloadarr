@@ -1,12 +1,14 @@
+"""User-mutable settings live in a JSON file at .data/settings.json.
+
+Kept out of the SQLite DB on purpose: track/playlist data and config have
+different lifecycles (you may legitimately want to wipe the DB to clear
+test data without nuking your Usenet/torrent credentials).
+"""
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
-
-from sqlmodel import select
-from sqlmodel.ext.asyncio.session import AsyncSession
-
-from app.db.models import SettingsRow
 
 DEFAULTS: dict[str, str] = {
     "library_path": "",
@@ -15,7 +17,6 @@ DEFAULTS: dict[str, str] = {
     "anthropic_api_key": "",
     "spotify_client_id": "",
     "spotify_client_secret": "",
-    # JSON-encoded lists of source configs; UI manages via list editors.
     "usenet_indexers": "[]",
     "usenet_servers": "[]",
     "torrent_indexers": "[]",
@@ -24,33 +25,42 @@ DEFAULTS: dict[str, str] = {
 LIST_KEYS = {"usenet_indexers", "usenet_servers", "torrent_indexers"}
 
 
-async def load_all(session: AsyncSession) -> dict[str, str]:
-    result = await session.exec(select(SettingsRow))
-    rows = result.all()
+def _settings_path() -> Path:
+    p = Path.cwd() / ".data" / "settings.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def load_all() -> dict[str, str]:
+    p = _settings_path()
+    if not p.exists():
+        return dict(DEFAULTS)
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return dict(DEFAULTS)
+    if not isinstance(data, dict):
+        return dict(DEFAULTS)
     out = dict(DEFAULTS)
-    for r in rows:
-        out[r.key] = r.value
+    for k, v in data.items():
+        if v is None:
+            out[k] = ""
+        elif isinstance(v, str):
+            out[k] = v
+        else:
+            out[k] = str(v)
     return out
 
 
-async def get(session: AsyncSession, key: str) -> str:
-    row = await session.get(SettingsRow, key)
-    return row.value if row else DEFAULTS.get(key, "")
+def save_all(cfg: dict[str, str]) -> None:
+    p = _settings_path()
+    p.write_text(json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
-async def set_value(session: AsyncSession, key: str, value: str) -> None:
-    row = await session.get(SettingsRow, key)
-    if row is None:
-        session.add(SettingsRow(key=key, value=value))
-    else:
-        row.value = value
-        session.add(row)
-    await session.commit()
-
-
-async def patch(session: AsyncSession, updates: dict[str, str]) -> None:
-    for k, v in updates.items():
-        await set_value(session, k, v)
+def patch(updates: dict[str, str]) -> None:
+    cfg = load_all()
+    cfg.update(updates)
+    save_all(cfg)
 
 
 def parse_list(raw: str) -> list[dict[str, Any]]:

@@ -4,11 +4,9 @@ import asyncio
 from pathlib import Path
 from typing import Iterator
 
-from fastapi import APIRouter, Depends
-from sqlmodel.ext.asyncio.session import AsyncSession
+from fastapi import APIRouter
 
 from app.config import settings as env_settings
-from app.db.session import get_session
 from app.db.settings_store import load_all, merge_with_env
 
 router = APIRouter(prefix="/library", tags=["library"])
@@ -46,8 +44,7 @@ def _scan_sync(root: str) -> list[dict]:
 
 
 @router.get("")
-async def list_library(session: AsyncSession = Depends(get_session)) -> list[dict]:
-    cfg_db = await load_all(session)
-    cfg = merge_with_env(cfg_db, env_settings)
+async def list_library() -> list[dict]:
+    cfg = merge_with_env(load_all(), env_settings)
     root = cfg.get("library_path") or env_settings.library_path
     return await asyncio.to_thread(_scan_sync, root)

@@ -39,6 +39,6 @@ class Track(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
-class SettingsRow(SQLModel, table=True):
-    key: str = Field(primary_key=True)
-    value: str = ""
+# NOTE: Settings used to live in a SettingsRow table here. They've been
+# moved to .data/settings.json so they survive any DB wipe — see
+# app/db/settings_store.py. The table is intentionally gone.

@@ -54,9 +54,7 @@ def _is_already_in_library(library_root: str, track: ResolvedTrack) -> str | Non
 
 
 async def process_track(track_id: int) -> None:
-    async with SessionLocal() as session:
-        cfg_db = await load_all(session)
-    cfg = merge_with_env(cfg_db, env_settings)
+    cfg = merge_with_env(load_all(), env_settings)
     library_root = cfg.get("library_path") or env_settings.library_path
 
     async with SessionLocal() as session:

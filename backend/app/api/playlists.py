@@ -136,8 +136,7 @@ async def import_playlist(
     Downloads do NOT start automatically — the user previews the tracklist
     on the playlist detail page and explicitly clicks Start.
     """
-    cfg_db = await load_all(session)
-    cfg = merge_with_env(cfg_db, env_settings)
+    cfg = merge_with_env(load_all(), env_settings)
 
     bus.emit("log", f"resolving {req.url}")
     try:

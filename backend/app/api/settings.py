@@ -2,12 +2,10 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 from pydantic import BaseModel
-from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.config import settings as env_settings
-from app.db.session import get_session
 from app.db.settings_store import load_all, merge_with_env, parse_list, patch as patch_settings
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -102,9 +100,6 @@ def _merge_secret_lists(
     incoming: list[dict],
     secret_keys: tuple[str, ...],
 ) -> list[dict]:
-    """When the UI sends a list, secret fields may be empty (meaning: keep
-    existing). Match incoming items against existing by (name) and re-attach
-    the prior secret value where the incoming one is blank."""
     by_name = {(e.get("name") or "").lower(): e for e in existing}
     out: list[dict] = []
     for item in incoming:
@@ -114,7 +109,6 @@ def _merge_secret_lists(
             for k in secret_keys:
                 if not merged.get(k) and prior.get(k):
                     merged[k] = prior[k]
-        # strip the *_set hints if the UI sends them back
         for k in list(merged.keys()):
             if k.endswith("_set"):
                 merged.pop(k, None)
@@ -123,37 +117,28 @@ def _merge_secret_lists(
 
 
 @router.get("", response_model=SettingsOut)
-async def get_settings(session: AsyncSession = Depends(get_session)) -> SettingsOut:
-    cfg_db = await load_all(session)
-    cfg = merge_with_env(cfg_db, env_settings)
+async def get_settings() -> SettingsOut:
+    cfg = merge_with_env(load_all(), env_settings)
     return _to_out(cfg)
 
 
 @router.put("", response_model=SettingsOut)
-async def update_settings(
-    body: SettingsPatch, session: AsyncSession = Depends(get_session)
-) -> SettingsOut:
-    cfg_db = await load_all(session)
+async def update_settings(body: SettingsPatch) -> SettingsOut:
+    cfg_db = load_all()
     payload = body.model_dump(exclude_unset=True)
     updates: dict[str, str] = {}
 
     if "preferred_sources" in payload and payload["preferred_sources"] is not None:
         updates["preferred_sources"] = ",".join(payload.pop("preferred_sources"))
 
-    for k in (
-        "library_path",
-        "quality_profile",
-        "spotify_client_id",
-    ):
+    for k in ("library_path", "quality_profile", "spotify_client_id"):
         if k in payload and payload[k] is not None:
             updates[k] = str(payload[k])
 
-    # Plain secrets: empty string = leave alone
     for k in ("anthropic_api_key", "spotify_client_secret"):
         if k in payload and payload[k]:
             updates[k] = str(payload[k])
 
-    # List-typed sources with secret merging
     if "usenet_indexers" in payload and payload["usenet_indexers"] is not None:
         existing = parse_list(cfg_db.get("usenet_indexers", "[]"))
         merged = _merge_secret_lists(existing, payload["usenet_indexers"], ("api_key",))
@@ -170,8 +155,7 @@ async def update_settings(
         updates["torrent_indexers"] = json.dumps(merged)
 
     if updates:
-        await patch_settings(session, updates)
+        patch_settings(updates)
 
-    cfg_db = await load_all(session)
-    cfg = merge_with_env(cfg_db, env_settings)
+    cfg = merge_with_env(load_all(), env_settings)
     return _to_out(cfg)
