@@ -72,6 +72,12 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  manualSearch: (id: number, query: string) =>
+    jfetch<TrackCandidate[]>(`/tracks/${id}/manual-search`, {
+      method: "POST",
+      body: JSON.stringify({ query }),
+    }),
+
   listLibrary: () => jfetch<LibraryEntry[]>("/library"),
 
   getQueue: () => jfetch<import("./types").TrackInQueue[]>("/queue"),

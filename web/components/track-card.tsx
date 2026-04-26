@@ -1,14 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import {
-  AlertTriangle,
-  CheckCircle2,
-  Music2,
-  RefreshCw,
-  Search,
-  X,
-} from "lucide-react";
+import { AlertTriangle, RefreshCw, Search, X } from "lucide-react";
 import { useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -18,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { StatusPill } from "@/components/status-pill";
+import { ManualSearchDialog } from "@/components/manual-search";
 
 function fmtDuration(s: number | null | undefined): string {
   if (!s) return "—";
@@ -44,7 +38,8 @@ function fmtEta(bytesLeft: number, kbps: number): string {
   if (!kbps || !bytesLeft) return "—";
   const seconds = Math.round(bytesLeft / 1024 / kbps);
   if (seconds < 60) return `${seconds}s`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  if (seconds < 3600)
+    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
   return `${Math.floor(seconds / 3600)}h${Math.floor((seconds % 3600) / 60)}m`;
 }
 
@@ -55,7 +50,6 @@ function _initials(track: TrackInQueue): string {
 }
 
 function ArtPlaceholder({ track }: { track: TrackInQueue }) {
-  // Stable colour from artist+title for visual differentiation
   const seed = `${track.artist}${track.title}`;
   let hash = 0;
   for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) | 0;
@@ -80,6 +74,7 @@ export function TrackCard({
   onChange?: () => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   async function retry() {
     if (busy) return;
@@ -97,7 +92,7 @@ export function TrackCard({
 
   async function drop() {
     if (busy) return;
-    if (!confirm(`Remove "${track.artist} – ${track.title}" from the queue?`)) return;
+    if (!confirm(`Remove "${track.artist} – ${track.title}"?`)) return;
     setBusy(true);
     try {
       await api.deleteTrack(track.id);
@@ -125,7 +120,7 @@ export function TrackCard({
         <ArtPlaceholder track={track} />
 
         <div className="min-w-0 flex-1">
-          <div className="flex items-baseline gap-2">
+          <div className="flex flex-wrap items-baseline gap-x-2">
             <h3 className="truncate text-base font-semibold tracking-tight">
               {track.title}
             </h3>
@@ -145,9 +140,7 @@ export function TrackCard({
           </div>
           <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-fg-muted">
             <span className="truncate font-medium">{track.artist}</span>
-            {track.album && (
-              <span className="truncate text-fg-subtle">· {track.album}</span>
-            )}
+            {track.album && <span className="truncate text-fg-subtle">· {track.album}</span>}
           </div>
           <div className="mt-1 flex items-center gap-3 font-mono text-[10px] uppercase tracking-widest text-fg-subtle">
             <Link
@@ -171,8 +164,24 @@ export function TrackCard({
         </div>
 
         <div className="flex shrink-0 items-center gap-1">
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => setSearchOpen(true)}
+            disabled={busy}
+            aria-label="Manual search"
+            title="Manual search"
+          >
+            <Search className="h-3.5 w-3.5" />
+          </Button>
           {(track.status === "failed" || track.status === "done") && (
-            <Button size="icon" variant="ghost" onClick={retry} disabled={busy} aria-label="Retry">
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={retry}
+              disabled={busy}
+              aria-label="Retry"
+            >
               <RefreshCw className="h-3.5 w-3.5" />
             </Button>
           )}
@@ -209,6 +218,14 @@ export function TrackCard({
           <span className="leading-relaxed">{track.error}</span>
         </div>
       )}
+
+      <ManualSearchDialog
+        trackId={track.id}
+        initialQuery={`${track.artist} ${track.title}`.trim()}
+        open={searchOpen}
+        onOpenChange={setSearchOpen}
+        onPicked={() => onChange?.()}
+      />
     </motion.div>
   );
 }

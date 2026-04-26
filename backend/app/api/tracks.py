@@ -6,9 +6,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.config import settings as env_settings
 from app.db.models import Track, TrackStatus
 from app.db.session import get_session
+from app.db.settings_store import load_all, merge_with_env
+from app.indexers import search_all
+from app.indexers.base import Candidate
 from app.pipeline.run import process_track, process_with_candidate
+from app.resolvers.base import ResolvedTrack
 from app.services.runner import submit
 
 router = APIRouter(prefix="/tracks", tags=["tracks"])
@@ -84,6 +89,58 @@ async def delete_track(track_id: int, session: AsyncSession = Depends(get_sessio
     await session.delete(t)
     await session.commit()
     return {"ok": True}
+
+
+class ManualSearchRequest(BaseModel):
+    query: str
+
+
+@router.post("/{track_id}/manual-search", response_model=list[CandidateOut])
+async def manual_search(
+    track_id: int,
+    body: ManualSearchRequest,
+    session: AsyncSession = Depends(get_session),
+) -> list[CandidateOut]:
+    t = await session.get(Track, track_id)
+    if not t:
+        raise HTTPException(404, "Track not found")
+    query = (body.query or "").strip()
+    if not query:
+        raise HTTPException(400, "Query is required")
+
+    rt = ResolvedTrack(
+        artist=t.artist or "",
+        title=query,
+        album=None,  # manual = trust the user's query exactly, no album cross-check
+        duration_s=t.duration_s,
+        track_no=t.track_no,
+        mb_recording_id=t.mb_recording_id,
+    )
+
+    cfg = merge_with_env(load_all(), env_settings)
+    raw: list[Candidate] = await search_all(rt, cfg)
+    raw.sort(key=lambda c: c.score, reverse=True)
+
+    payload = [
+        {
+            "source": c.source.value,
+            "url": c.url,
+            "title": c.title,
+            "score": round(c.score, 3),
+            "size": int((c.extra or {}).get("size") or 0),
+            "indexer": (c.extra or {}).get("indexer") or "",
+            "seeders": int((c.extra or {}).get("seeders") or 0),
+            "format": c.format or "",
+            "bitrate_kbps": c.bitrate_kbps or 0,
+        }
+        for c in raw[:25]
+    ]
+
+    t.candidates_json = json.dumps(payload)
+    session.add(t)
+    await session.commit()
+
+    return [CandidateOut(**p) for p in payload]
 
 
 @router.post("/{track_id}/use-candidate")
