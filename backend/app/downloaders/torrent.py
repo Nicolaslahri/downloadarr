@@ -3,10 +3,13 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from typing import Optional
+
 from app.downloaders.base import DownloadResult
 from app.indexers.base import Candidate, SourceKind
 from app.resolvers.base import ResolvedTrack
 from app.services.events import bus
+from app.services.progress import TrackProgress
 from app.services.torrents.engine import download as lt_download
 from app.services.track_picker import pick_track_file
 from app.services.usenet.postproc import find_audio_files
@@ -19,7 +22,11 @@ class TorrentDownloader:
         return candidate.source == SourceKind.torrent
 
     async def download(
-        self, candidate: Candidate, dest_dir: str, track: ResolvedTrack
+        self,
+        candidate: Candidate,
+        dest_dir: str,
+        track: ResolvedTrack,
+        progress: Optional[TrackProgress] = None,
     ) -> DownloadResult:
         last_pct = -1
 
@@ -30,7 +37,15 @@ class TorrentDownloader:
                 bus.emit("log", f"torrent {candidate.title}: {pct}%")
                 last_pct = pct
 
-        result = await lt_download(candidate.url, dest_dir, progress=on_progress)
+        async def on_bytes(done: int, total: int) -> None:
+            if progress is not None:
+                await progress.update(done, total)
+
+        result = await lt_download(
+            candidate.url, dest_dir,
+            progress=on_progress,
+            bytes_progress=on_bytes,
+        )
 
         # libtorrent already returns the largest audio file, but if the
         # torrent is an album we want a specific track. Re-scan the save

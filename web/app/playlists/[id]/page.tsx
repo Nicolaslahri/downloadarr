@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPill } from "@/components/status-pill";
+import { TrackProgressBar } from "@/components/track-progress";
 
 function fmtDuration(s: number | null) {
   if (!s) return "—";
@@ -191,8 +192,23 @@ export default function PlaylistDetailPage() {
                     <div className="text-right font-mono text-xs text-fg-muted">
                       {fmtDuration(t.duration_s)}
                     </div>
-                    <div>
+                    <div className="flex flex-col items-start gap-1">
                       <StatusPill status={t.status} />
+                      {t.status === "downloading" && (t.bytes_total ?? 0) > 0 && (
+                        <div className="w-full min-w-[180px]">
+                          <TrackProgressBar
+                            bytesDone={t.bytes_done ?? 0}
+                            bytesTotal={t.bytes_total ?? 0}
+                            speedKbps={t.speed_kbps ?? 0}
+                          />
+                        </div>
+                      )}
+                      {t.status === "done" && t.quality_format && (
+                        <span className="font-mono text-[10px] uppercase text-fg-subtle">
+                          {t.quality_format}
+                          {t.quality_bitrate ? ` · ${t.quality_bitrate} kbps` : ""}
+                        </span>
+                      )}
                     </div>
                     <div className="flex justify-end">
                       {(t.status === "failed" || t.status === "done") && (

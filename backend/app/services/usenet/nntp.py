@@ -212,19 +212,24 @@ async def download_files(
     files: list,  # list[NzbFile]
     dest_dir: Path,
     progress: callable | None = None,
+    bytes_progress: callable | None = None,
 ) -> list[Path]:
-    """Download every file in the NZB into dest_dir. Returns list of file paths.
+    """Download every file in the NZB into dest_dir.
 
-    Segments are concatenated in order. Filename is taken from the first
-    segment's yEnc header (or the NZB subject as fallback).
+    `progress(done_segments, total_segments)` (sync) — kept for log lines.
+    `bytes_progress(done_bytes, total_bytes)` (async) — for the UI.
     """
     dest_dir.mkdir(parents=True, exist_ok=True)
     out_paths: list[Path] = []
     total_segments = sum(len(f.segments) for f in files)
+    total_bytes = sum(s.bytes for f in files for s in f.segments)
     done_segments = 0
+    done_bytes = 0
 
     for f in files:
-        # Fan out segments for THIS file in parallel; preserve order on assembly.
+        # Index segments so we can look up byte count when each completes.
+        seg_bytes = {s.number: s.bytes for s in f.segments}
+
         async def fetch_seg(seg):
             return seg.number, await download_segment(pool, seg.message_id)
 
@@ -235,8 +240,11 @@ async def download_files(
                 num, (name, data) = await fut
                 chunks.append((num, name, data))
                 done_segments += 1
+                done_bytes += seg_bytes.get(num) or len(data)
                 if progress:
                     progress(done_segments, total_segments)
+                if bytes_progress:
+                    await bytes_progress(done_bytes, total_bytes)
         finally:
             for t in tasks:
                 if not t.done():
@@ -246,7 +254,6 @@ async def download_files(
         if not chunks:
             continue
         filename = next((n for _, n, _ in chunks if n), None) or f.subject or "file.bin"
-        # Sanitize basic
         filename = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", filename).strip() or "file.bin"
         out = dest_dir / filename
         with open(out, "wb") as fh:

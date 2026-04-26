@@ -34,6 +34,7 @@ async def download(
     torrent_url_or_magnet: str,
     save_dir: str,
     progress: Callable[[int, int], None] | None = None,
+    bytes_progress: Callable[[int, int], "Awaitable[None]"] | None = None,
     timeout_s: int = 60 * 60,
 ) -> TorrentResult:
     lt = _import_lt()
@@ -91,8 +92,11 @@ async def download(
     # Loop until done (or until our chosen file is fully downloaded)
     while True:
         s = handle.status()
-        if progress and s.total_wanted > 0:
-            progress(int(s.total_wanted_done), int(s.total_wanted))
+        if s.total_wanted > 0:
+            if progress:
+                progress(int(s.total_wanted_done), int(s.total_wanted))
+            if bytes_progress:
+                await bytes_progress(int(s.total_wanted_done), int(s.total_wanted))
         if s.is_seeding or s.progress >= 1.0:
             break
         if asyncio.get_event_loop().time() > deadline:

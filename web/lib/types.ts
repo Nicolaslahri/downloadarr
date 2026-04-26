@@ -18,6 +18,14 @@ export interface Track {
   status: TrackStatus;
   file_path: string | null;
   error: string | null;
+  track_no?: number | null;
+  year?: number | null;
+  bytes_done?: number;
+  bytes_total?: number;
+  speed_kbps?: number;
+  quality_format?: string | null;
+  quality_bitrate?: number | null;
+  quality_lossless?: boolean;
   created_at: string;
   updated_at: string;
 }

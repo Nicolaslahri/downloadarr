@@ -17,6 +17,7 @@ from app.pipeline.tag import tag_file
 from app.resolvers.base import ResolvedTrack
 from app.services.events import bus
 from app.services.musicbrainz import enrich as mb_enrich
+from app.services.progress import TrackProgress
 
 
 async def _set_status(track_id: int, status: TrackStatus, **fields) -> None:
@@ -149,8 +150,12 @@ async def process_track(track_id: int) -> None:
         if not downloader:
             continue
         await _set_status(track_id, TrackStatus.downloading)
+        prog = TrackProgress(track_id=track_id)
         try:
-            result = await downloader.download(cand, env_settings.downloads_path, rt)
+            result = await downloader.download(
+                cand, env_settings.downloads_path, rt, progress=prog
+            )
+            await prog.finalize()
         except NotImplementedError as e:
             last_err = str(e)
             continue

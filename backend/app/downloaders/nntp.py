@@ -8,10 +8,13 @@ from pathlib import Path
 
 import httpx
 
+from typing import Optional
+
 from app.downloaders.base import DownloadResult
 from app.indexers.base import Candidate, SourceKind
 from app.resolvers.base import ResolvedTrack
 from app.services.events import bus
+from app.services.progress import TrackProgress
 from app.services.track_picker import pick_track_file
 from app.services.usenet.nntp import NntpConfig, NntpPool
 from app.services.usenet.nntp import download_files as nntp_download_files
@@ -52,7 +55,11 @@ class NntpDownloader:
         return candidate.source == SourceKind.nzb and bool(self.servers)
 
     async def download(
-        self, candidate: Candidate, dest_dir: str, track: ResolvedTrack
+        self,
+        candidate: Candidate,
+        dest_dir: str,
+        track: ResolvedTrack,
+        progress: Optional[TrackProgress] = None,
     ) -> DownloadResult:
         if not self.servers:
             raise RuntimeError("No NNTP servers configured. Add one in Settings → Usenet.")
@@ -82,8 +89,16 @@ class NntpDownloader:
                 bus.emit("log", f"NNTP {cfg.host}: {done}/{total} segments ({pct}%)")
                 last_pct = pct
 
+        async def on_bytes(done: int, total: int) -> None:
+            if progress is not None:
+                await progress.update(done, total)
+
         try:
-            await nntp_download_files(pool, nzb.files, work_dir, progress=on_progress)
+            await nntp_download_files(
+                pool, nzb.files, work_dir,
+                progress=on_progress,
+                bytes_progress=on_bytes,
+            )
         finally:
             await pool.shutdown()
 
