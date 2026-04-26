@@ -88,6 +88,10 @@ _PATTERNS = [
 ]
 
 
+_ARTICLES = {"the", "a", "an"}
+_NORMALIZE_PUNCT = re.compile(r"[^\w\s&]")
+
+
 def _humanize(s: str | None) -> str | None:
     if s is None:
         return None
@@ -96,11 +100,6 @@ def _humanize(s: str | None) -> str | None:
 
 
 def parse_release_title(title: str) -> ParsedRelease:
-    """Returns a ParsedRelease — fields may be None when not found.
-
-    Always returns an object (never None) so callers can rely on
-    inspecting flags like is_compilation regardless of regex success.
-    """
     raw = (title or "").strip()
     cleaned = _TRACKER_TAG.sub("", raw).strip()
 
@@ -133,17 +132,66 @@ def parse_release_title(title: str) -> ParsedRelease:
 
 
 def clean_name(s: str | None) -> str:
-    """Lowercase, strip diacritics, drop punctuation, collapse whitespace.
-    Used for token-based comparison between artist/album names."""
+    """Lowercase, strip diacritics, strip leading article, drop punctuation,
+    collapse whitespace. Used for token-based comparison.
+
+    'The Beatles' → 'beatles'   (article stripped)
+    'Beyoncé'     → 'beyonce'   (NFD-normalized, marks dropped)
+    'AC/DC'      → 'ac dc'      (slash → space)
+    """
     if not s:
         return ""
     s = unicodedata.normalize("NFD", s)
     s = "".join(c for c in s if unicodedata.category(c) != "Mn")
-    s = re.sub(r"[^\w\s&]", " ", s).lower()
-    return re.sub(r"\s+", " ", s).strip()
+    s = _NORMALIZE_PUNCT.sub(" ", s).lower()
+    s = re.sub(r"\s+", " ", s).strip()
+    # Strip a single leading article so "The Beatles" matches "Beatles"
+    parts = s.split(" ", 1)
+    if len(parts) == 2 and parts[0] in _ARTICLES:
+        s = parts[1]
+    return s
 
 
 def tokens(s: str | None) -> set[str]:
-    """Whitespace-split clean_name into a set of tokens. Token matching
-    avoids false positives like 'ray' matching 'ray_hawthorne'."""
-    return set(clean_name(s).split()) if s else set()
+    """clean_name + drop articles + drop 1-char tokens."""
+    if not s:
+        return set()
+    return {
+        t
+        for t in clean_name(s).split()
+        if t and t not in _ARTICLES and len(t) > 1
+    }
+
+
+def fuzzy_match(target: str | None, haystack: str | None) -> float:
+    """Symmetric 0–1 score for 'does the haystack contain enough of target'.
+
+    Token-based first (avoids 'ray fuzzy-matches raye' false positives);
+    falls back to rapidfuzz token_set_ratio for diacritic / punctuation
+    edge cases the tokenizer might miss.
+    """
+    if not target or not haystack:
+        return 0.0
+    target_tokens = tokens(target)
+    haystack_tokens = tokens(haystack)
+    if not target_tokens:
+        return 0.0
+
+    # Strong signal: every meaningful target token is present.
+    if target_tokens.issubset(haystack_tokens):
+        return 1.0
+
+    overlap = len(target_tokens & haystack_tokens)
+    if overlap:
+        return 0.5 + 0.5 * (overlap / len(target_tokens))
+
+    # No token overlap. Try rapidfuzz on the cleaned strings — catches
+    # things tokens miss (e.g. 'AC/DC' vs 'ACDC' if normalisation differs).
+    try:
+        from rapidfuzz import fuzz  # type: ignore
+
+        score = fuzz.token_set_ratio(clean_name(target), clean_name(haystack)) / 100.0
+        # Penalise heavily — if tokens didn't overlap, we're being generous.
+        return max(0.0, score - 0.4)
+    except Exception:
+        return 0.0

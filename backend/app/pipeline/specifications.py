@@ -3,19 +3,32 @@
 Priority groups (lower runs first; same-priority specs all run together,
 short-circuit on any reject):
 
-    5 — parse (no-op spec; populates cache for downstream specs)
-   10 — format blacklist (audiobook/video/disc image)
-   20 — artist match (must reference our artist)
-   25 — album OR title match (when album known, else title)
-   30 — size sanity (release size plausible for track duration)
+    5  — parse  (no-op spec; populates parsed-release cache)
+    10 — format-blacklist (audiobook/video/disc image)
+    20 — artist-match (parsed artist must reference our artist)
+    25 — album-match OR title-match (album when known, title fallback)
+    30 — size-sanity (release size plausible for track duration)
 """
 from __future__ import annotations
 
 import re
 
 from app.indexers.base import Candidate
-from app.pipeline.release_parser import clean_name, tokens
+from app.pipeline.release_parser import (
+    clean_name,
+    fuzzy_match,
+    tokens,
+)
 from app.pipeline.specs import Reject, SearchCtx
+
+
+# Lidarr's thresholds: 0.8 for artist, 0.7 for album, with stricter gap
+# enforcement. We don't have a "runner-up" set so the gap doesn't apply;
+# instead we use fuzzy_match's token-issubset signal as the primary
+# gate and rely on the score for tie-breaking later.
+_ARTIST_THRESHOLD = 0.7
+_ALBUM_THRESHOLD = 0.6
+_TITLE_THRESHOLD = 0.5
 
 
 class ParseSpec:
@@ -23,7 +36,7 @@ class ParseSpec:
     priority = 5
 
     def check(self, c: Candidate, ctx: SearchCtx) -> Reject | None:
-        ctx.parse(c)  # cache for downstream
+        ctx.parse(c)
         return None
 
 
@@ -49,8 +62,10 @@ class FormatBlacklistSpec:
 
 
 class ArtistMatchesSpec:
-    """The candidate's parsed artist (or full title) must contain at
-    least one token of our primary artist."""
+    """The parsed artist (or full release title as fallback) must
+    fuzzy-match our primary artist. Token-based to stop 'ray' from
+    fake-matching 'ray_hawthorne'."""
+
     name = "artist-match"
     priority = 20
 
@@ -60,23 +75,29 @@ class ArtistMatchesSpec:
             return None
         primary = re.split(
             r"\s*[,/&]\s*|\s+feat\.?\s+|\s+ft\.?\s+", track.artist, maxsplit=1
-        )[0]
-        target = {t for t in tokens(primary) if len(t) > 1}
-        if not target:
+        )[0].strip()
+        if not primary:
             return None
+
         parsed = ctx.parse(c)
-        haystack = tokens(parsed.artist) | tokens(c.title)
-        if not (target & haystack):
+        # Try the parsed artist first (most precise), then fall back to the
+        # full release title in case parsing didn't isolate it.
+        score_parsed = fuzzy_match(primary, parsed.artist) if parsed.artist else 0.0
+        score_title = fuzzy_match(primary, c.title)
+        score = max(score_parsed, score_title)
+
+        if score < _ARTIST_THRESHOLD:
             return Reject(
                 self.name,
-                f"artist {primary!r} not found in release",
+                f"artist {primary!r} doesn't match (score {score:.2f})",
             )
         return None
 
 
 class AlbumMatchesSpec:
-    """When MusicBrainz gave us an album, the candidate must reference
-    enough of its meaningful words. Stops 'right artist, wrong album'."""
+    """When MusicBrainz gave us an album, the candidate's parsed album
+    (or release title fallback) must fuzzy-match it."""
+
     name = "album-match"
     priority = 25
 
@@ -84,40 +105,38 @@ class AlbumMatchesSpec:
         track = ctx.track
         if not track.album:
             return None
-        target = {t for t in tokens(track.album) if len(t) > 2}
-        if not target:
-            return None
         parsed = ctx.parse(c)
-        haystack = tokens(parsed.album) | tokens(c.title)
-        hits = len(target & haystack)
-        needed = max(1, len(target) // 2)
-        if hits < needed:
+        score_parsed = fuzzy_match(track.album, parsed.album) if parsed.album else 0.0
+        score_title = fuzzy_match(track.album, c.title)
+        score = max(score_parsed, score_title)
+        if score < _ALBUM_THRESHOLD:
             return Reject(
                 self.name,
-                f"album {track.album!r} not in release ({hits}/{len(target)} words)",
+                f"album {track.album!r} not in release (score {score:.2f})",
             )
         return None
 
 
 class TitleInReleaseSpec:
-    """Fallback when no album info — require at least one title word."""
+    """Fallback when no album info — require the track title in the release."""
+
     name = "title-match"
-    priority = 25  # same group as AlbumMatches; only fires when album unknown
+    priority = 25
 
     def check(self, c: Candidate, ctx: SearchCtx) -> Reject | None:
         track = ctx.track
         if track.album:
-            return None  # album spec handles it
+            return None  # AlbumMatchesSpec handles it instead
         if not track.title:
             return None
-        target = {t for t in tokens(track.title) if len(t) > 2}
-        if not target:
-            return None
-        haystack = tokens(c.title)
-        if not (target & haystack):
+        score = fuzzy_match(track.title, c.title)
+        parsed = ctx.parse(c)
+        if parsed.album:
+            score = max(score, fuzzy_match(track.title, parsed.album))
+        if score < _TITLE_THRESHOLD:
             return Reject(
                 self.name,
-                f"title {track.title!r} not in release",
+                f"title {track.title!r} not in release (score {score:.2f})",
             )
         return None
 
@@ -125,6 +144,7 @@ class TitleInReleaseSpec:
 class SizeReasonableSpec:
     """Reject releases too big to plausibly contain only the album our
     track lives on. Lossless ceiling ~14 MB/min × 20-track album."""
+
     name = "size-sanity"
     priority = 30
 
