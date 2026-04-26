@@ -2,8 +2,8 @@
 
 Stops the pipeline from picking obvious false positives — audiobooks
 named the same as a song, video releases that happen to mention the
-artist, album-sized payloads when we know we want a single track from
-a different album, etc.
+artist, releases by a different artist whose name happens to share a
+substring with ours, album-sized payloads for a single, etc.
 """
 from __future__ import annotations
 
@@ -29,6 +29,8 @@ _NON_MUSIC_MARKERS = [
     ".iso", "[iso]",
 ]
 
+_STOP = {"the", "and", "of", "a", "an", "to", "in", "for", "on", "edition", "feat", "ft"}
+
 
 def _norm_for_match(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", (s or "").lower())
@@ -46,25 +48,48 @@ def _album_words(track: ResolvedTrack) -> list[str]:
     if not track.album:
         return []
     raw = re.split(r"\s+", track.album.lower())
-    # Skip stop-words that frequently appear in album names but aren't
-    # discriminative on their own.
-    stop = {"the", "and", "of", "a", "an", "to", "in", "for", "on", "edition"}
-    return [w for w in raw if len(w) > 2 and w not in stop]
+    return [w for w in raw if len(w) > 2 and w not in _STOP]
+
+
+def _artist_words(track: ResolvedTrack) -> list[str]:
+    """Words from the *primary* artist. Splits on comma / slash / & /
+    feat so 'RAYE, 070 Shake' yields ['raye'] not ['raye', '070', 'shake']."""
+    if not track.artist:
+        return []
+    primary = re.split(
+        r"\s*[,/&]\s*|\s+feat\.?\s+|\s+ft\.?\s+",
+        track.artist,
+        maxsplit=1,
+    )[0]
+    raw = re.split(r"\s+", primary.lower())
+    return [w for w in raw if len(w) > 1 and w not in _STOP]
+
+
+def _title_words(track: ResolvedTrack) -> list[str]:
+    if not track.title:
+        return []
+    raw = re.split(r"\s+", track.title.lower().rstrip(".!?,;"))
+    return [w for w in raw if len(w) > 2 and w not in _STOP]
 
 
 def _plausible_size_max(track: ResolvedTrack) -> int | None:
-    """Return the largest plausible release size in bytes for this track,
-    or None if we can't make a guess (no duration known)."""
     if not track.duration_s:
         return None
     minutes = max(1.0, track.duration_s / 60.0)
-    # Lossless ceiling: ~12 MB/min. Padding for parity files + metadata.
     per_min = 14 * 1024 * 1024
     if track.album:
-        # An album release: assume up to 20 tracks averaging same length.
         return int(per_min * minutes * 20)
-    # A standalone single: a few MB to maybe 60 MB tops.
     return int(per_min * minutes * 4)
+
+
+def _word_match_count(words: list[str], haystack: str) -> int:
+    """Match each word as its own token (so 'ray' doesn't match
+    'ray_hawthorne'). Words are matched against tokens in the
+    space-normalized haystack."""
+    if not words:
+        return 0
+    tokens = set(haystack.split())
+    return sum(1 for w in words if w in tokens)
 
 
 def filter_candidates(
@@ -77,7 +102,9 @@ def filter_candidates(
     kept: list[Candidate] = []
     rejected: list[tuple[Candidate, str]] = []
 
+    artist_words = _artist_words(track)
     album_words = _album_words(track)
+    title_words = _title_words(track)
     size_cap = _plausible_size_max(track)
 
     for c in candidates:
@@ -89,22 +116,39 @@ def filter_candidates(
 
         title_norm = _norm_for_match(c.title)
 
-        # 2. Album cross-check — when MusicBrainz gave us an album name,
-        #    the candidate must contain at least half of its meaningful
-        #    words (skipping stop-words). A release that doesn't mention
-        #    the album is almost always for a different album by the
-        #    same artist.
-        if album_words:
-            hits = sum(1 for w in album_words if w in title_norm)
-            needed = max(1, len(album_words) // 2)
+        # 2. ARTIST cross-check — strongest signal when no album info is
+        #    available. Token-based match so 'ray' doesn't accidentally
+        #    match 'ray_hawthorne' (the actual failure case we saw).
+        if artist_words:
+            hits = _word_match_count(artist_words, title_norm)
+            needed = max(1, (len(artist_words) + 1) // 2)
             if hits < needed:
                 rejected.append(
-                    (c, f"album {track.album!r} not in release title (hit {hits}/{len(album_words)} words)")
+                    (c, f"artist {track.artist!r} not in release (matched {hits}/{len(artist_words)})")
                 )
                 continue
 
-        # 3. Size sanity — reject releases too big to plausibly contain
-        #    only the album our track lives on.
+        # 3. Album cross-check — when MusicBrainz gave us an album name.
+        if album_words:
+            hits = _word_match_count(album_words, title_norm)
+            needed = max(1, len(album_words) // 2)
+            if hits < needed:
+                rejected.append(
+                    (c, f"album {track.album!r} not in release (matched {hits}/{len(album_words)})")
+                )
+                continue
+        elif title_words:
+            # 3b. No album → require at least one title word in the release.
+            #     Keeps us from grabbing 'RAYE — Some Other Song' for
+            #     'Escapism.'.
+            hits = _word_match_count(title_words, title_norm)
+            if hits == 0:
+                rejected.append(
+                    (c, f"title {track.title!r} not in release name")
+                )
+                continue
+
+        # 4. Size sanity.
         size = int((c.extra or {}).get("size") or 0)
         if size_cap and size and size > size_cap:
             rejected.append(
