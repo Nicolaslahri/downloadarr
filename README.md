@@ -6,31 +6,43 @@ No Prowlarr, no SABnzbd, no qBittorrent. You enter your NZBGeek/Newshosting/Torz
 
 Streaming services and YouTube are used **only to enumerate the tracklist** — the actual audio is always pulled from Usenet or torrents at FLAC / 320 kbps quality.
 
-## Run locally (zero-infra dev)
+## Run locally (one command)
 
-The backend defaults to a local SQLite file at `backend/.data/musicdl.db`, so you can run both halves without Docker.
+Backend defaults to a local SQLite file at `backend/.data/musicdl.db`, so the whole stack runs without Docker.
 
-### Backend (FastAPI on :8000)
+### One-time setup
 
 ```powershell
+# Backend deps
 cd backend
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -e .
-uvicorn app.main:app --reload --port 8000
+
+# Frontend deps
+cd ..\web
+npm install
 ```
 
-API docs: http://localhost:8000/docs
+### Every time after that
 
-### Frontend (Next.js on :3000)
+From `web/`:
 
 ```powershell
-cd web
-npm install
-npm run dev
+npm run start
 ```
 
-Open http://localhost:3000.
+That's it. `concurrently` launches the FastAPI backend (`api`, port 8000) and Next.js dev server (`web`, port 3000) in the same terminal with prefixed output, and Ctrl+C kills both.
+
+- Web UI: http://localhost:3000
+- API docs: http://localhost:8000/docs
+
+If you want them separately:
+
+```powershell
+npm run dev:api   # backend only
+npm run dev:web   # frontend only
+```
 
 The top bar shows a green dot once it can reach the API. Visit `Settings` to wire up your indexers, news servers, AI key, and Spotify credentials.
 
