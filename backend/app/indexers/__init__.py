@@ -63,6 +63,9 @@ def build_indexers(cfg: dict[str, str]) -> list[Indexer]:
 
 
 async def search_all(track: ResolvedTrack, cfg: dict[str, str]) -> list[Candidate]:
+    """Fan out across every configured indexer in parallel, then dedupe
+    by URL/guid keeping the highest-scored copy. Same release on three
+    trackers shouldn't show up three times in the candidates panel."""
     indexers = build_indexers(cfg)
     if not indexers:
         return []
@@ -70,9 +73,15 @@ async def search_all(track: ResolvedTrack, cfg: dict[str, str]) -> list[Candidat
         *(i.search(track) for i in indexers),
         return_exceptions=True,
     )
-    out: list[Candidate] = []
+    seen: dict[str, Candidate] = {}
     for r in results:
         if isinstance(r, Exception):
             continue
-        out.extend(r)
-    return out
+        for c in r:
+            key = c.url
+            if not key:
+                continue
+            existing = seen.get(key)
+            if existing is None or c.score > existing.score:
+                seen[key] = c
+    return list(seen.values())
