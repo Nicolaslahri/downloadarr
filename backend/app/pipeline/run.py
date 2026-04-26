@@ -13,9 +13,10 @@ from app.db.settings_store import load_all, merge_with_env
 from app.downloaders import pick as pick_downloader
 from app.indexers import search_all
 from app.indexers.base import Candidate, SourceKind
-from app.pipeline.filters import filter_candidates
 from app.pipeline.organize import organize
 from app.pipeline.score import rank
+from app.pipeline.specifications import default_specs
+from app.pipeline.specs import evaluate
 from app.pipeline.tag import tag_file
 from app.resolvers.base import ResolvedTrack
 from app.services.audio import meets_floor, probe as probe_audio
@@ -136,30 +137,39 @@ async def process_track(track_id: int) -> None:
         return
 
     raw_candidates = await search_all(rt, cfg)
-    candidates, rejected = filter_candidates(raw_candidates, rt)
 
-    if rejected:
-        sample = rejected[:5]
-        for cand, reason in sample:
+    # Spec engine — every candidate gets an accept/reject decision with
+    # reasons. The candidates panel persists both sets so the user can
+    # see what was filtered and override it if needed.
+    decisions = evaluate(raw_candidates, rt, default_specs())
+    accepted_decisions = [d for d in decisions if d.accepted]
+    rejected_decisions = [d for d in decisions if not d.accepted]
+    accepted = [d.candidate for d in accepted_decisions]
+
+    if rejected_decisions:
+        for d in rejected_decisions[:5]:
+            reasons = "; ".join(r.reason for r in d.rejects)
             bus.emit(
                 "log",
-                f"#{track_id} reject: {cand.title!r} — {reason}",
+                f"#{track_id} reject: {d.candidate.title!r} — {reasons}",
                 level="warn",
             )
-        if len(rejected) > 5:
+        if len(rejected_decisions) > 5:
             bus.emit(
                 "log",
-                f"#{track_id} reject: …{len(rejected) - 5} more candidates filtered",
+                f"#{track_id} reject: …{len(rejected_decisions) - 5} more filtered",
                 level="warn",
             )
 
     profile = cfg.get("quality_profile") or "best"
     preferred = [s for s in (cfg.get("preferred_sources") or "").split(",") if s]
-    ranked = rank(candidates, rt, profile, preferred)
+    ranked = rank(accepted, rt, profile, preferred)
 
-    # Persist for the candidates panel so user can see what was found.
-    cand_payload = [
-        {
+    # Persist BOTH accepted and rejected to candidates_json so the UI
+    # candidates panel can show the full picture.
+    cand_payload: list[dict] = []
+    for c in ranked[:30]:
+        cand_payload.append({
             "source": c.source.value,
             "url": c.url,
             "title": c.title,
@@ -169,9 +179,24 @@ async def process_track(track_id: int) -> None:
             "seeders": int((c.extra or {}).get("seeders") or 0),
             "format": c.format or "",
             "bitrate_kbps": c.bitrate_kbps or 0,
-        }
-        for c in ranked[:25]
-    ]
+            "accepted": True,
+            "reject_reasons": [],
+        })
+    for d in rejected_decisions[:30]:
+        c = d.candidate
+        cand_payload.append({
+            "source": c.source.value,
+            "url": c.url,
+            "title": c.title,
+            "score": round(c.score, 3),
+            "size": int((c.extra or {}).get("size") or 0),
+            "indexer": (c.extra or {}).get("indexer") or "",
+            "seeders": int((c.extra or {}).get("seeders") or 0),
+            "format": c.format or "",
+            "bitrate_kbps": c.bitrate_kbps or 0,
+            "accepted": False,
+            "reject_reasons": [{"spec": r.spec, "reason": r.reason} for r in d.rejects],
+        })
     async with SessionLocal() as session:
         tt = await session.get(Track, track_id)
         if tt:
@@ -179,11 +204,15 @@ async def process_track(track_id: int) -> None:
             session.add(tt)
             await session.commit()
 
-    if not candidates:
+    if not accepted:
         await _set_status(
             track_id,
             TrackStatus.failed,
-            error="No matches from any configured indexer for this track.",
+            error=(
+                "Every candidate was filtered out. Open the candidates panel — "
+                "rejected releases are listed there with their reasons. You can "
+                "force one of them or run a manual search."
+            ),
         )
         return
 
