@@ -11,6 +11,7 @@ Free, no API key. Just polite User-Agent and ~1 req/sec.
 from __future__ import annotations
 
 import asyncio
+import re
 from dataclasses import dataclass
 from typing import Optional
 
@@ -96,6 +97,47 @@ def _track_no_for(rec_id: str, rec_title: str, release: dict) -> Optional[int]:
     return None
 
 
+def _artist_variants(artist: str) -> list[str]:
+    """Yield candidate artist strings to try in order of preference.
+
+    For 'RAYE, 070 Shake' we try the full string first, then 'RAYE'
+    alone; multi-artist tracks are common and MB sometimes credits
+    only the lead artist on the recording."""
+    out = [artist.strip()]
+    parts = re.split(r"\s*[,/&]\s*|\s+feat\.?\s+|\s+ft\.?\s+", artist, maxsplit=1)
+    if len(parts) > 1 and parts[0].strip() and parts[0].strip() not in out:
+        out.append(parts[0].strip())
+    return out
+
+
+def _clean_title(title: str) -> str:
+    """Strip trailing punctuation/parentheticals that confuse MB scoring."""
+    cleaned = title.strip()
+    # Drop trailing periods/exclaim/question
+    cleaned = re.sub(r"[.!?]+$", "", cleaned)
+    # Drop a single trailing parenthetical that looks like an annotation
+    cleaned = re.sub(
+        r"\s*[\(\[][^\)\]]{0,40}(official|video|audio|lyric[s]?|hd|hq|4k|mv|remix)[^\)\]]{0,40}[\)\]]\s*$",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    return cleaned.strip()
+
+
+async def _mb_search(client: httpx.AsyncClient, artist: str, title: str) -> list[dict]:
+    query = f'recording:"{_lucene_escape(title)}" AND artist:"{_lucene_escape(artist)}"'
+    try:
+        r = await client.get(
+            f"{MB_BASE}/recording/",
+            params={"query": query, "fmt": "json", "limit": 10},
+        )
+        r.raise_for_status()
+        return (r.json() or {}).get("recordings") or []
+    except Exception:
+        return []
+
+
 async def enrich(
     artist: str, title: str, duration_s: Optional[int] = None
 ) -> Optional[EnrichedTrack]:
@@ -103,33 +145,32 @@ async def enrich(
     if not artist or not title:
         return None
 
-    query = f'recording:"{_lucene_escape(title)}" AND artist:"{_lucene_escape(artist)}"'
+    title_clean = _clean_title(title)
+    artist_attempts = _artist_variants(artist)
 
+    recordings: list[dict] = []
     async with _RATE_LOCK:
-        try:
-            async with httpx.AsyncClient(
-                timeout=15,
-                headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
-            ) as client:
-                r = await client.get(
-                    f"{MB_BASE}/recording/",
-                    params={"query": query, "fmt": "json", "limit": 10},
-                )
-                r.raise_for_status()
-                data = r.json()
-        except Exception as e:
-            bus.emit("log", f"MusicBrainz lookup failed: {e}", level="warn")
-            await asyncio.sleep(1.0)
-            return None
-        await asyncio.sleep(1.0)  # be polite
+        async with httpx.AsyncClient(
+            timeout=15,
+            headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
+        ) as client:
+            for attempt_artist in artist_attempts:
+                recordings = await _mb_search(client, attempt_artist, title_clean)
+                if recordings:
+                    bus.emit(
+                        "log",
+                        f"MB: {len(recordings)} recordings for {attempt_artist!r} – {title_clean!r}",
+                    )
+                    break
+                await asyncio.sleep(1.0)
+        await asyncio.sleep(1.0)
 
-    recordings = data.get("recordings") or []
     if not recordings:
         return None
 
     # Score each recording.
     target_artist = _norm(artist)
-    target_title = _norm(title)
+    target_title = _norm(title_clean)
     best, best_score = None, -1.0
     for rec in recordings:
         score = float(rec.get("score") or 0) / 100.0
