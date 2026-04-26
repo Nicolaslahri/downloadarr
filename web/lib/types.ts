@@ -87,6 +87,11 @@ export interface FreeTorrentSources {
   x1337: boolean;
 }
 
+export interface QualityConfig {
+  chain: string[];
+  floor: string;
+}
+
 export interface AppSettings {
   library_path: string;
   quality_profile: "best" | "lossless_first" | "320_only";
@@ -97,6 +102,7 @@ export interface AppSettings {
   usenet_servers: UsenetServer[];
   torrent_indexers: TorrentIndexer[];
   free_torrents: FreeTorrentSources;
+  quality: QualityConfig;
 }
 
 export interface SettingsUpdate {
@@ -110,6 +116,7 @@ export interface SettingsUpdate {
   usenet_servers?: UsenetServer[];
   torrent_indexers?: TorrentIndexer[];
   free_torrents?: FreeTorrentSources;
+  quality?: QualityConfig;
 }
 
 export interface LibraryEntry {

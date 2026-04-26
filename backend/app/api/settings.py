@@ -51,6 +51,11 @@ class FreeTorrentSources(BaseModel):
     x1337: bool = True
 
 
+class QualityConfig(BaseModel):
+    chain: list[str] = ["lossless", "320", "256", "192"]
+    floor: str = "192"
+
+
 class SettingsOut(BaseModel):
     library_path: str
     quality_profile: str
@@ -61,6 +66,7 @@ class SettingsOut(BaseModel):
     usenet_servers: list[UsenetServer]
     torrent_indexers: list[TorrentIndexer]
     free_torrents: FreeTorrentSources
+    quality: QualityConfig
 
 
 class SettingsPatch(BaseModel):
@@ -74,6 +80,7 @@ class SettingsPatch(BaseModel):
     usenet_servers: list[dict] | None = None
     torrent_indexers: list[dict] | None = None
     free_torrents: FreeTorrentSources | None = None
+    quality: QualityConfig | None = None
 
 
 def _redact_indexer(item: dict, key: str = "api_key") -> dict:
@@ -120,6 +127,10 @@ def _to_out(cfg: dict[str, str]) -> SettingsOut:
             torrents_csv=_bool_setting(cfg, "free_src_torrents_csv", True),
             nyaa=_bool_setting(cfg, "free_src_nyaa", True),
             x1337=_bool_setting(cfg, "free_src_x1337", True),
+        ),
+        quality=QualityConfig(
+            chain=[t for t in (cfg.get("quality_chain") or "lossless,320,256,192").split(",") if t],
+            floor=(cfg.get("quality_floor") or "192").strip(),
         ),
     )
 
@@ -189,6 +200,16 @@ async def update_settings(body: SettingsPatch) -> SettingsOut:
             updates["free_src_torrents_csv"] = "true" if ft.get("torrents_csv", True) else "false"
             updates["free_src_nyaa"] = "true" if ft.get("nyaa", True) else "false"
             updates["free_src_x1337"] = "true" if ft.get("x1337", True) else "false"
+
+    if "quality" in payload and payload["quality"] is not None:
+        q = payload["quality"]
+        if isinstance(q, dict):
+            chain = q.get("chain")
+            if isinstance(chain, list):
+                updates["quality_chain"] = ",".join(str(t) for t in chain)
+            floor = q.get("floor")
+            if floor:
+                updates["quality_floor"] = str(floor)
 
     if updates:
         patch_settings(updates)

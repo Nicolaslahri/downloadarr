@@ -128,57 +128,38 @@ export default function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="quality">
+          <QualityCard
+            value={draft.quality ?? data.quality}
+            onChange={(v) => set("quality", v)}
+          />
+          <div className="h-4" />
           <Card>
             <CardHeader>
-              <CardTitle>Quality profile</CardTitle>
-              <CardDescription>How aggressively to chase higher-fidelity files.</CardDescription>
+              <CardTitle>Source preference</CardTitle>
+              <CardDescription>
+                Which download backends to prefer when multiple are available
+                for a track.
+              </CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-4">
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                {QUALITY_OPTIONS.map((opt) => {
-                  const active = (draft.quality_profile ?? data.quality_profile) === opt.value;
+            <CardContent>
+              <div className="flex flex-wrap gap-2">
+                {ALL_SOURCES.map((s) => {
+                  const on = prefs.includes(s);
                   return (
                     <button
-                      key={opt.value}
+                      key={s}
                       type="button"
-                      onClick={() => set("quality_profile", opt.value)}
-                      className={`relative rounded-lg border p-4 text-left transition-all ${
-                        active ? "border-accent bg-accent/10" : "border-border bg-bg-subtle/40 hover:bg-bg-hover"
+                      onClick={() => togglePref(s)}
+                      className={`rounded-full border px-3 py-1 font-mono text-[11px] uppercase tracking-wider transition-colors ${
+                        on
+                          ? "border-accent/40 bg-accent/10 text-accent"
+                          : "border-border bg-bg-subtle/40 text-fg-muted hover:bg-bg-hover"
                       }`}
                     >
-                      {active && (
-                        <motion.div layoutId="quality-active" className="absolute inset-0 rounded-lg ring-1 ring-accent" transition={{ type: "spring", stiffness: 380, damping: 30 }} />
-                      )}
-                      <div className="font-medium">{opt.label}</div>
-                      <div className="mt-1 text-xs text-fg-muted">{opt.hint}</div>
+                      {s}
                     </button>
                   );
                 })}
-              </div>
-
-              <div>
-                <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-fg-subtle">
-                  Preferred source order
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {ALL_SOURCES.map((s) => {
-                    const on = prefs.includes(s);
-                    return (
-                      <button
-                        key={s}
-                        type="button"
-                        onClick={() => togglePref(s)}
-                        className={`rounded-full border px-3 py-1 font-mono text-[11px] uppercase tracking-wider transition-colors ${
-                          on
-                            ? "border-accent/40 bg-accent/10 text-accent"
-                            : "border-border bg-bg-subtle/40 text-fg-muted hover:bg-bg-hover"
-                        }`}
-                      >
-                        {s}
-                      </button>
-                    );
-                  })}
-                </div>
               </div>
             </CardContent>
           </Card>
@@ -564,6 +545,133 @@ function UsenetServersCard({
         </motion.div>
       ))}
     </ListShell>
+  );
+}
+
+const QUALITY_TIERS: { id: string; label: string; hint: string }[] = [
+  { id: "lossless", label: "Lossless", hint: "FLAC / ALAC / WAV / APE" },
+  { id: "320", label: "320 kbps", hint: "MP3 / M4A / AAC ≥ 320" },
+  { id: "256", label: "256 kbps", hint: "MP3 / M4A / AAC ≥ 256" },
+  { id: "192", label: "192 kbps", hint: "MP3 / M4A / AAC ≥ 192" },
+  { id: "any", label: "Any", hint: "Anything above 0 kbps" },
+];
+
+function QualityCard({
+  value,
+  onChange,
+}: {
+  value: import("@/lib/types").QualityConfig;
+  onChange: (v: import("@/lib/types").QualityConfig) => void;
+}) {
+  function move(idx: number, dir: -1 | 1) {
+    const next = [...value.chain];
+    const j = idx + dir;
+    if (j < 0 || j >= next.length) return;
+    [next[idx], next[j]] = [next[j], next[idx]];
+    onChange({ ...value, chain: next });
+  }
+  function toggle(id: string) {
+    if (value.chain.includes(id)) {
+      const next = value.chain.filter((t) => t !== id);
+      onChange({ ...value, chain: next });
+    } else {
+      onChange({ ...value, chain: [...value.chain, id] });
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Quality preference + floor</CardTitle>
+        <CardDescription>
+          Top of the chain is what we try to get first; floor is the minimum we'll
+          accept. Below the floor → track marked failed, never silently downgraded.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-4">
+        <div>
+          <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-fg-subtle">
+            Preference (drag-style: arrows move tier)
+          </div>
+          <ul className="grid gap-1.5">
+            {value.chain.map((tierId, i) => {
+              const tier = QUALITY_TIERS.find((t) => t.id === tierId);
+              if (!tier) return null;
+              return (
+                <li
+                  key={tierId}
+                  className="flex items-center gap-3 rounded-lg border border-border bg-bg-subtle/40 px-3 py-2"
+                >
+                  <span className="font-mono text-[10px] uppercase tracking-widest text-fg-subtle">
+                    #{i + 1}
+                  </span>
+                  <div className="flex-1">
+                    <div className="font-medium">{tier.label}</div>
+                    <div className="text-xs text-fg-muted">{tier.hint}</div>
+                  </div>
+                  <button
+                    onClick={() => move(i, -1)}
+                    disabled={i === 0}
+                    className="rounded border border-border px-2 py-0.5 text-xs text-fg-muted disabled:opacity-30 hover:bg-bg-hover hover:text-fg"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    onClick={() => move(i, 1)}
+                    disabled={i === value.chain.length - 1}
+                    className="rounded border border-border px-2 py-0.5 text-xs text-fg-muted disabled:opacity-30 hover:bg-bg-hover hover:text-fg"
+                  >
+                    ↓
+                  </button>
+                  <button
+                    onClick={() => toggle(tierId)}
+                    className="rounded border border-border px-2 py-0.5 text-xs text-fg-muted hover:bg-danger/10 hover:text-danger"
+                    title="Remove from chain"
+                  >
+                    ×
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {QUALITY_TIERS.filter((t) => !value.chain.includes(t.id)).map((t) => (
+              <button
+                key={t.id}
+                onClick={() => toggle(t.id)}
+                className="rounded-full border border-dashed border-border bg-bg-subtle/40 px-3 py-1 font-mono text-[10px] uppercase tracking-wider text-fg-muted hover:bg-bg-hover hover:text-fg"
+              >
+                + {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-fg-subtle">
+            Hard floor — reject anything below this
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {QUALITY_TIERS.map((t) => {
+              const active = value.floor === t.id;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => onChange({ ...value, floor: t.id })}
+                  className={`rounded-md border px-3 py-1.5 text-sm transition-colors ${
+                    active
+                      ? "border-accent bg-accent/10 text-accent"
+                      : "border-border bg-bg-subtle/40 text-fg-muted hover:bg-bg-hover hover:text-fg"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

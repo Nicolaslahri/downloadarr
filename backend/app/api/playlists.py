@@ -47,6 +47,14 @@ class TrackOut(BaseModel):
     status: str
     file_path: Optional[str]
     error: Optional[str]
+    track_no: Optional[int] = None
+    year: Optional[int] = None
+    bytes_done: int = 0
+    bytes_total: int = 0
+    speed_kbps: int = 0
+    quality_format: Optional[str] = None
+    quality_bitrate: Optional[int] = None
+    quality_lossless: bool = False
     created_at: datetime
     updated_at: datetime
 

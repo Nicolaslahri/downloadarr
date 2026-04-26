@@ -24,6 +24,10 @@ DEFAULTS: dict[str, str] = {
     "free_src_torrents_csv": "true",
     "free_src_nyaa": "true",
     "free_src_x1337": "true",
+    # Quality chain: ordered preference list, top-of-list first.
+    # Floor: minimum acceptable tier; below this = failed track.
+    "quality_chain": "lossless,320,256,192",
+    "quality_floor": "192",
 }
 
 LIST_KEYS = {"usenet_indexers", "usenet_servers", "torrent_indexers"}

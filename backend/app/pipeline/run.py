@@ -17,6 +17,7 @@ from app.pipeline.organize import organize
 from app.pipeline.score import rank
 from app.pipeline.tag import tag_file
 from app.resolvers.base import ResolvedTrack
+from app.services.audio import meets_floor, probe as probe_audio
 from app.services.events import bus
 from app.services.musicbrainz import enrich as mb_enrich
 from app.services.progress import TrackProgress
@@ -189,6 +190,28 @@ async def process_track(track_id: int) -> None:
             bus.emit("log", f"#{track_id} {last_err}", level="warn")
             continue
 
+        # Quality probe + floor check before we commit to keeping the file.
+        floor = (cfg.get("quality_floor") or "192").strip().lower()
+        info = probe_audio(Path(result.file_path))
+        if info is None:
+            last_err = "audio probe failed (file unreadable)"
+            try:
+                Path(result.file_path).unlink(missing_ok=True)
+            except Exception:
+                pass
+            bus.emit("log", f"#{track_id} {last_err}", level="warn")
+            continue
+        if not meets_floor(info, floor):
+            last_err = (
+                f"quality below floor: {info.label()} (tier {info.tier}) < floor {floor}"
+            )
+            try:
+                Path(result.file_path).unlink(missing_ok=True)
+            except Exception:
+                pass
+            bus.emit("log", f"#{track_id} {last_err}", level="warn")
+            continue
+
         await _set_status(track_id, TrackStatus.tagging)
         await tag_file(result.file_path, rt)
         try:
@@ -196,8 +219,16 @@ async def process_track(track_id: int) -> None:
         except Exception as e:
             await _set_status(track_id, TrackStatus.failed, error=f"organize: {e}")
             return
+        async with SessionLocal() as session:
+            tt = await session.get(Track, track_id)
+            if tt:
+                tt.quality_format = info.format
+                tt.quality_bitrate = info.bitrate_kbps or None
+                tt.quality_lossless = info.lossless
+                session.add(tt)
+                await session.commit()
         await _set_status(track_id, TrackStatus.done, file_path=final, error=None)
-        bus.emit("log", f"#{track_id} done → {final}")
+        bus.emit("log", f"#{track_id} done → {final} ({info.label()})")
         return
 
     await _set_status(
@@ -258,6 +289,23 @@ async def process_with_candidate(track_id: int, cand_dict: dict) -> None:
         await _set_status(track_id, TrackStatus.failed, error=f"{downloader.name}: {e}")
         return
 
+    floor = (cfg.get("quality_floor") or "192").strip().lower()
+    info = probe_audio(Path(result.file_path))
+    if info is None:
+        await _set_status(track_id, TrackStatus.failed, error="audio probe failed")
+        return
+    if not meets_floor(info, floor):
+        try:
+            Path(result.file_path).unlink(missing_ok=True)
+        except Exception:
+            pass
+        await _set_status(
+            track_id,
+            TrackStatus.failed,
+            error=f"quality below floor: {info.label()} (tier {info.tier}) < floor {floor}",
+        )
+        return
+
     await _set_status(track_id, TrackStatus.tagging)
     await tag_file(result.file_path, rt)
     try:
@@ -265,5 +313,13 @@ async def process_with_candidate(track_id: int, cand_dict: dict) -> None:
     except Exception as e:
         await _set_status(track_id, TrackStatus.failed, error=f"organize: {e}")
         return
+    async with SessionLocal() as session:
+        tt = await session.get(Track, track_id)
+        if tt:
+            tt.quality_format = info.format
+            tt.quality_bitrate = info.bitrate_kbps or None
+            tt.quality_lossless = info.lossless
+            session.add(tt)
+            await session.commit()
     await _set_status(track_id, TrackStatus.done, file_path=final, error=None)
-    bus.emit("log", f"#{track_id} done (manual candidate) → {final}")
+    bus.emit("log", f"#{track_id} done (manual candidate) → {final} ({info.label()})")
