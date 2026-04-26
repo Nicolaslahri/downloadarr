@@ -20,6 +20,10 @@ DEFAULTS: dict[str, str] = {
     "usenet_indexers": "[]",
     "usenet_servers": "[]",
     "torrent_indexers": "[]",
+    # Free public torrent sources — default ON, no API keys needed.
+    "free_src_torrents_csv": "true",
+    "free_src_nyaa": "true",
+    "free_src_x1337": "true",
 }
 
 LIST_KEYS = {"usenet_indexers", "usenet_servers", "torrent_indexers"}

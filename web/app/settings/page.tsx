@@ -197,6 +197,11 @@ export default function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="torrents">
+          <FreeTorrentSourcesCard
+            value={draft.free_torrents ?? data.free_torrents}
+            onChange={(v) => set("free_torrents", v)}
+          />
+          <div className="h-4" />
           <TorrentIndexersCard
             value={draft.torrent_indexers ?? data.torrent_indexers}
             onChange={(v) => set("torrent_indexers", v)}
@@ -559,6 +564,49 @@ function UsenetServersCard({
         </motion.div>
       ))}
     </ListShell>
+  );
+}
+
+function FreeTorrentSourcesCard({
+  value,
+  onChange,
+}: {
+  value: import("@/lib/types").FreeTorrentSources;
+  onChange: (v: import("@/lib/types").FreeTorrentSources) => void;
+}) {
+  const sources = [
+    { key: "torrents_csv" as const, label: "torrents-csv", hint: "DHT-aggregated dataset; JSON API. Stable, no auth." },
+    { key: "nyaa" as const, label: "Nyaa.si", hint: "RSS feed. Best for OST / anime / Asian music." },
+    { key: "x1337" as const, label: "1337x", hint: "Public general tracker. HTML scraper — may break when their layout changes." },
+  ];
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Magnet className="h-4 w-4" /> Free public sources
+        </CardTitle>
+        <CardDescription>
+          No API keys, no subscriptions. Toggle any you don't want.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-2">
+        {sources.map((s) => (
+          <label
+            key={s.key}
+            className="flex items-start justify-between gap-3 rounded-lg border border-border bg-bg-subtle/40 p-3"
+          >
+            <div className="min-w-0 flex-1">
+              <div className="font-medium">{s.label}</div>
+              <div className="mt-0.5 text-xs text-fg-muted">{s.hint}</div>
+            </div>
+            <Switch
+              checked={value[s.key]}
+              onCheckedChange={(checked) => onChange({ ...value, [s.key]: checked })}
+            />
+          </label>
+        ))}
+      </CardContent>
+    </Card>
   );
 }
 

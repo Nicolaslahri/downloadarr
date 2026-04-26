@@ -45,6 +45,12 @@ class TorrentIndexer(BaseModel):
     api_key_set: bool = False
 
 
+class FreeTorrentSources(BaseModel):
+    torrents_csv: bool = True
+    nyaa: bool = True
+    x1337: bool = True
+
+
 class SettingsOut(BaseModel):
     library_path: str
     quality_profile: str
@@ -54,6 +60,7 @@ class SettingsOut(BaseModel):
     usenet_indexers: list[UsenetIndexer]
     usenet_servers: list[UsenetServer]
     torrent_indexers: list[TorrentIndexer]
+    free_torrents: FreeTorrentSources
 
 
 class SettingsPatch(BaseModel):
@@ -66,6 +73,7 @@ class SettingsPatch(BaseModel):
     usenet_indexers: list[dict] | None = None
     usenet_servers: list[dict] | None = None
     torrent_indexers: list[dict] | None = None
+    free_torrents: FreeTorrentSources | None = None
 
 
 def _redact_indexer(item: dict, key: str = "api_key") -> dict:
@@ -80,6 +88,13 @@ def _redact_server(item: dict) -> dict:
     out = {k: v for k, v in item.items() if k != "password"}
     out["password_set"] = has
     return out
+
+
+def _bool_setting(cfg: dict[str, str], key: str, default: bool = True) -> bool:
+    v = cfg.get(key)
+    if v is None or v == "":
+        return default
+    return str(v).lower() not in ("0", "false", "no", "off")
 
 
 def _to_out(cfg: dict[str, str]) -> SettingsOut:
@@ -101,6 +116,11 @@ def _to_out(cfg: dict[str, str]) -> SettingsOut:
             TorrentIndexer(**_redact_indexer(i))
             for i in parse_list(cfg.get("torrent_indexers", "[]"))
         ],
+        free_torrents=FreeTorrentSources(
+            torrents_csv=_bool_setting(cfg, "free_src_torrents_csv", True),
+            nyaa=_bool_setting(cfg, "free_src_nyaa", True),
+            x1337=_bool_setting(cfg, "free_src_x1337", True),
+        ),
     )
 
 
@@ -162,6 +182,13 @@ async def update_settings(body: SettingsPatch) -> SettingsOut:
         existing = parse_list(cfg_db.get("torrent_indexers", "[]"))
         merged = _merge_secret_lists(existing, payload["torrent_indexers"], ("api_key",))
         updates["torrent_indexers"] = json.dumps(merged)
+
+    if "free_torrents" in payload and payload["free_torrents"] is not None:
+        ft = payload["free_torrents"]
+        if isinstance(ft, dict):
+            updates["free_src_torrents_csv"] = "true" if ft.get("torrents_csv", True) else "false"
+            updates["free_src_nyaa"] = "true" if ft.get("nyaa", True) else "false"
+            updates["free_src_x1337"] = "true" if ft.get("x1337", True) else "false"
 
     if updates:
         patch_settings(updates)

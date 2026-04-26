@@ -81,6 +81,12 @@ export interface TorrentIndexer {
   api_key_set?: boolean;
 }
 
+export interface FreeTorrentSources {
+  torrents_csv: boolean;
+  nyaa: boolean;
+  x1337: boolean;
+}
+
 export interface AppSettings {
   library_path: string;
   quality_profile: "best" | "lossless_first" | "320_only";
@@ -90,6 +96,7 @@ export interface AppSettings {
   usenet_indexers: UsenetIndexer[];
   usenet_servers: UsenetServer[];
   torrent_indexers: TorrentIndexer[];
+  free_torrents: FreeTorrentSources;
 }
 
 export interface SettingsUpdate {
@@ -102,6 +109,7 @@ export interface SettingsUpdate {
   usenet_indexers?: UsenetIndexer[];
   usenet_servers?: UsenetServer[];
   torrent_indexers?: TorrentIndexer[];
+  free_torrents?: FreeTorrentSources;
 }
 
 export interface LibraryEntry {

@@ -4,6 +4,7 @@ import asyncio
 import json
 
 from app.indexers.base import Candidate, Indexer, SourceKind
+from app.indexers.free import NyaaIndexer, TorrentsCsvIndexer, X1337Indexer
 from app.indexers.newznab import NewznabAggregateIndexer, NewznabIndexer
 from app.indexers.torznab import TorznabAggregateIndexer, TorznabIndexer
 from app.resolvers.base import ResolvedTrack
@@ -19,11 +20,17 @@ def _parse_list(raw: str) -> list[dict]:
     return data if isinstance(data, list) else []
 
 
+def _bool(cfg: dict[str, str], key: str, default: bool = True) -> bool:
+    v = cfg.get(key)
+    if v is None or v == "":
+        return default
+    return str(v).lower() not in ("0", "false", "no", "off")
+
+
 def build_indexers(cfg: dict[str, str]) -> list[Indexer]:
-    """HQ-audio sources only. yt-dlp is used elsewhere for playlist
-    enumeration but never as an audio source — we chase FLAC/320 here."""
     indexers: list[Indexer] = []
 
+    # Newznab (Usenet)
     nzb_cfgs = _parse_list(cfg.get("usenet_indexers", "[]"))
     nzb_inst = [
         NewznabIndexer(c.get("name", "indexer"), c.get("url", ""), c.get("api_key", ""))
@@ -33,6 +40,7 @@ def build_indexers(cfg: dict[str, str]) -> list[Indexer]:
     if nzb_inst:
         indexers.append(NewznabAggregateIndexer(nzb_inst))
 
+    # Torznab (paid/subscription torrent indexers)
     tor_cfgs = _parse_list(cfg.get("torrent_indexers", "[]"))
     tor_inst = [
         TorznabIndexer(c.get("name", "tracker"), c.get("url", ""), c.get("api_key", ""))
@@ -41,6 +49,15 @@ def build_indexers(cfg: dict[str, str]) -> list[Indexer]:
     ]
     if tor_inst:
         indexers.append(TorznabAggregateIndexer(tor_inst))
+
+    # Free public torrent sources — toggleable, default ON since
+    # they cost nothing.
+    if _bool(cfg, "free_src_torrents_csv", True):
+        indexers.append(TorrentsCsvIndexer())
+    if _bool(cfg, "free_src_nyaa", True):
+        indexers.append(NyaaIndexer())
+    if _bool(cfg, "free_src_x1337", True):
+        indexers.append(X1337Indexer())
 
     return indexers
 
