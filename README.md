@@ -6,9 +6,31 @@ No Prowlarr, no SABnzbd, no qBittorrent. You enter your NZBGeek/Newshosting/Torz
 
 Streaming services and YouTube are used **only to enumerate the tracklist** — the actual audio is always pulled from Usenet or torrents at FLAC / 320 kbps quality.
 
-## Run locally (one command)
+## Run on a Linux server (recommended)
 
-Backend defaults to a local SQLite file at `backend/.data/musicdl.db`, so the whole stack runs without Docker.
+Self-hosted on Linux via Docker is the primary deployment target. The image includes everything: `ffmpeg`, `par2`, `unrar`, `p7zip-full`, and `libtorrent` — no manual binary installs, no PATH wrangling.
+
+```bash
+git clone https://github.com/Nicolaslahri/downloadarr.git musicdl
+cd musicdl
+docker compose up -d --build
+```
+
+That's it.
+
+- Web UI: http://your-server:3000
+- API docs: http://your-server:8000/docs
+
+Bind mounts (override via env / compose file):
+- `./backend/.data` — SQLite, settings, auto-installed tools (persisted)
+- `./library` (or `$LIBRARY_PATH`) — final tagged audio library
+- `./downloads` — in-flight scratch space; safe to wipe
+
+To upgrade: `git pull && docker compose up -d --build`.
+
+## Run locally (one command, no Docker)
+
+Backend defaults to a local SQLite file at `backend/.data/musicdl.db`, so the whole stack runs without Docker. Linux/macOS users get par2/unrar from their package manager (`apt install par2 unrar` / `brew install par2 unrar`); Windows users get them auto-installed at startup or via the upload escape hatch in Settings → Tools.
 
 ### One-time setup
 
