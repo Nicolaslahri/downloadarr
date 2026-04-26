@@ -110,11 +110,75 @@ async def ensure_par2(force: bool = False) -> dict[str, Any]:
         return _status("par2", available=False, path=None, auto=True, error=str(e))
 
 
-async def _extract_sfx_with_7z(sfx_path: Path, target_dir: Path) -> Path | None:
+def _winrar_paths() -> list[Path]:
+    return [
+        Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "WinRAR" / "UnRAR.exe",
+        Path(os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)")) / "WinRAR" / "UnRAR.exe",
+        Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "WinRAR" / "UnRAR.exe",
+        Path(os.environ.get("LOCALAPPDATA", "")) / "WinRAR" / "UnRAR.exe",
+    ]
+
+
+def _find_winrar_unrar() -> Path | None:
+    for p in _winrar_paths():
+        if str(p) and p.exists() and p.stat().st_size > 50_000:
+            return p
+    return None
+
+
+def _sevenzip_paths() -> list[Path]:
+    return [
+        Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "7-Zip" / "7z.exe",
+        Path(os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)")) / "7-Zip" / "7z.exe",
+        Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "7-Zip" / "7z.exe",
+        Path(os.environ.get("LOCALAPPDATA", "")) / "7-Zip" / "7z.exe",
+        Path(os.environ.get("USERPROFILE", "")) / "scoop" / "shims" / "7z.exe",
+    ]
+
+
+def _find_sevenzip() -> str | None:
+    p = _which("7z") or _which("7za") or _which("7zr")
+    if p:
+        return p
+    for cand in _sevenzip_paths():
+        if str(cand) and cand.exists():
+            return str(cand)
+    return None
+
+
+async def _winget_install_7zip() -> str | None:
+    """Try a user-scope, non-interactive winget install. Returns the path
+    to the newly-installed 7z.exe if it succeeded, else None."""
+    winget = _which("winget")
+    if not winget:
+        return None
+    bus.emit("log", "tools: attempting `winget install 7zip.7zip` (user scope)")
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            winget, "install", "--id", "7zip.7zip",
+            "--silent",
+            "--accept-source-agreements",
+            "--accept-package-agreements",
+            "--scope", "user",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        try:
+            await asyncio.wait_for(proc.communicate(), timeout=120)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.communicate()
+            return None
+    except Exception:
+        return None
+    return _find_sevenzip()
+
+
+async def _extract_sfx_with_7z(sfx_path: Path, target_dir: Path,
+                               sevenz_path: str | None = None) -> Path | None:
     """7-Zip can read rarlab's SFX (it's a RAR archive with an exe prefix).
-    No UAC required, no installer side-effects. Returns the extracted
-    UnRAR.exe path if it succeeded, else None."""
-    sevenz = _which("7z") or _which("7za") or _which("7zr")
+    No UAC required, no installer side-effects."""
+    sevenz = sevenz_path or _find_sevenzip()
     if not sevenz:
         return None
     try:
@@ -126,6 +190,33 @@ async def _extract_sfx_with_7z(sfx_path: Path, target_dir: Path) -> Path | None:
         )
         try:
             await asyncio.wait_for(proc.communicate(), timeout=60)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.communicate()
+    except Exception:
+        return None
+    for name in ("UnRAR.exe", "unrar.exe"):
+        cand = target_dir / name
+        if cand.exists() and cand.stat().st_size > 50_000:
+            return cand
+    return None
+
+
+async def _extract_sfx_with_tar(sfx_path: Path, target_dir: Path) -> Path | None:
+    """Long shot: Windows 10+ ships bsdtar (libarchive) as tar.exe and some
+    builds support RAR extraction."""
+    tar_bin = _which("tar.exe") or _which("tar")
+    if not tar_bin:
+        return None
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            tar_bin, "-xf", str(sfx_path),
+            cwd=str(target_dir),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        try:
+            await asyncio.wait_for(proc.communicate(), timeout=30)
         except asyncio.TimeoutError:
             proc.kill()
             await proc.communicate()
@@ -159,27 +250,63 @@ async def ensure_unrar(force: bool = False) -> dict[str, Any]:
             error="unrar not found. Install via your package manager: `apt install unrar` or `brew install unrar`.",
         )
 
+    # 0) Check for an existing WinRAR install — UnRAR.exe ships inside it
+    #    at a stable path on most Windows machines that have ever opened
+    #    a RAR file.
+    winrar = _find_winrar_unrar()
+    if winrar:
+        target.write_bytes(winrar.read_bytes())
+        bus.emit("log", f"unrar found via WinRAR install → {target}")
+        return _status("unrar", available=True, path=str(target), auto=True)
+
     bus.emit("log", "unrar: downloading rarlab SFX")
     sfx_path = TOOLS_DIR / "_unrar_sfx.exe"
     try:
         sfx_bytes = await _download("https://www.rarlab.com/rar/unrarw64.exe")
         sfx_path.write_bytes(sfx_bytes)
 
-        # 1) Best path: extract the embedded RAR archive with 7-Zip if it's
-        #    on the PATH. No UAC, no installer side-effects.
-        bus.emit("log", "unrar: trying 7-Zip extraction")
-        extracted = await _extract_sfx_with_7z(sfx_path, TOOLS_DIR)
+        # 1) 7-Zip on PATH or in a known install location.
+        sevenz = _find_sevenzip()
+        if sevenz:
+            bus.emit("log", f"unrar: extracting via 7-Zip ({sevenz})")
+            extracted = await _extract_sfx_with_7z(sfx_path, TOOLS_DIR, sevenz)
+            if extracted:
+                if extracted != target:
+                    target.write_bytes(extracted.read_bytes())
+                    if extracted != target:
+                        extracted.unlink(missing_ok=True)
+                sfx_path.unlink(missing_ok=True)
+                bus.emit("log", f"unrar installed via 7-Zip → {target}")
+                return _status("unrar", available=True, path=str(target), auto=True)
+
+        # 2) Windows tar.exe (libarchive-based) — long shot but free.
+        bus.emit("log", "unrar: trying Windows tar.exe")
+        extracted = await _extract_sfx_with_tar(sfx_path, TOOLS_DIR)
         if extracted:
             if extracted != target:
                 target.write_bytes(extracted.read_bytes())
                 if extracted != target:
                     extracted.unlink(missing_ok=True)
             sfx_path.unlink(missing_ok=True)
-            bus.emit("log", f"unrar installed via 7-Zip → {target}")
+            bus.emit("log", f"unrar installed via tar → {target}")
             return _status("unrar", available=True, path=str(target), auto=True)
 
-        # 2) Fallback: try silent flags. rarlab's SFX rarely respects these
-        #    without elevation, but cheap to try.
+        # 3) Auto-install 7-Zip via winget (user scope, no UAC), then retry.
+        new_sevenz = await _winget_install_7zip()
+        if new_sevenz:
+            bus.emit("log", f"unrar: 7-Zip installed via winget ({new_sevenz}), retrying extraction")
+            extracted = await _extract_sfx_with_7z(sfx_path, TOOLS_DIR, new_sevenz)
+            if extracted:
+                if extracted != target:
+                    target.write_bytes(extracted.read_bytes())
+                    if extracted != target:
+                        extracted.unlink(missing_ok=True)
+                sfx_path.unlink(missing_ok=True)
+                bus.emit("log", f"unrar installed → {target}")
+                return _status("unrar", available=True, path=str(target), auto=True)
+
+        # 4) Final attempt: silent SFX flags. Almost never works without
+        #    elevation but cheap to try.
         for args in [
             [str(sfx_path), "-s", f"-d{TOOLS_DIR}"],
             [str(sfx_path), "/S", f"/D={TOOLS_DIR}"],
@@ -219,8 +346,9 @@ async def ensure_unrar(force: bool = False) -> dict[str, Any]:
             path=None,
             auto=True,
             error=(
-                "Auto-install failed (no 7-Zip on PATH and the rarlab SFX needs UAC). "
-                "Click the Upload button and pick UnRAR.exe from rarlab.com — no admin needed."
+                "Auto-install couldn't find any RAR-capable tool on this machine "
+                "(no WinRAR, no 7-Zip, no winget). Use the Upload button to drop "
+                "in UnRAR.exe — single download from rarlab.com, no admin needed."
             ),
         )
     except Exception as e:
