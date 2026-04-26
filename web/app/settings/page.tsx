@@ -650,9 +650,18 @@ function ToolsCard() {
     try {
       const next = await api.installTools(force);
       mutate(next);
-      const ok = Object.values(next).every((t) => t.available);
-      if (ok) toast.success("All tools available");
-      else toast.message("Tools install ran — see status");
+      const ok = Object.entries(next).filter(([, t]) => t.available);
+      const failed = Object.entries(next).filter(([, t]) => !t.available);
+      if (failed.length === 0) {
+        toast.success(`All tools installed (${ok.map(([n]) => n).join(", ")})`);
+      } else {
+        for (const [name, t] of ok) {
+          toast.success(`${name}: installed`);
+        }
+        for (const [name, t] of failed) {
+          toast.error(`${name}: ${t.error ?? "install failed"}`, { duration: 10000 });
+        }
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Install failed");
     } finally {
@@ -712,19 +721,28 @@ function ToolsCard() {
 }
 
 function ToolRow({ tool }: { tool: ToolsStatus[keyof ToolsStatus] }) {
+  const hasError = !tool.available && !!tool.error;
   return (
-    <div className="flex items-start gap-3 rounded-lg border border-border bg-bg-subtle/40 p-3">
+    <div
+      className={`flex items-start gap-3 rounded-lg border p-3 ${
+        tool.available
+          ? "border-success/30 bg-success/5"
+          : hasError
+          ? "border-danger/40 bg-danger/5"
+          : "border-warn/30 bg-warn/5"
+      }`}
+    >
       <div className="mt-0.5">
         {tool.available ? (
           <CheckCircle2 className="h-5 w-5 text-success" />
         ) : (
-          <AlertTriangle className="h-5 w-5 text-warn" />
+          <AlertTriangle className={`h-5 w-5 ${hasError ? "text-danger" : "text-warn"}`} />
         )}
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="font-medium uppercase tracking-wider">{tool.name}</span>
-          <Badge tone={tool.available ? "success" : "warn"}>
+          <Badge tone={tool.available ? "success" : hasError ? "danger" : "warn"}>
             {tool.available ? (tool.auto_managed ? "auto-installed" : "system") : "missing"}
           </Badge>
         </div>
@@ -732,7 +750,16 @@ function ToolRow({ tool }: { tool: ToolsStatus[keyof ToolsStatus] }) {
           <div className="mt-1 truncate font-mono text-[11px] text-fg-subtle">{tool.path}</div>
         )}
         {tool.error && (
-          <div className="mt-1 text-[11px] text-warn">{tool.error}</div>
+          <div
+            className={`mt-2 rounded border px-2 py-1.5 text-[11px] leading-relaxed ${
+              hasError
+                ? "border-danger/30 bg-danger/10 text-danger"
+                : "border-warn/30 bg-warn/10 text-warn"
+            }`}
+          >
+            <span className="mr-1 font-mono uppercase tracking-wider opacity-70">why:</span>
+            {tool.error}
+          </div>
         )}
       </div>
     </div>
