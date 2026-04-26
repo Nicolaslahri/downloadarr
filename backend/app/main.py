@@ -11,6 +11,7 @@ from app.services.cleanup import startup_sweep
 from app.services.events import bus
 from app.services.runner import shutdown as shutdown_runner
 from app.services.tools import ensure_all as ensure_tools
+from app.services.trackers import background_refresher as trackers_refresher
 
 
 @asynccontextmanager
@@ -20,6 +21,7 @@ async def lifespan(app: FastAPI):
     # Don't block startup on these — fire and forget.
     asyncio.create_task(ensure_tools())
     asyncio.create_task(startup_sweep(env_settings.downloads_path))
+    asyncio.create_task(trackers_refresher())
     try:
         yield
     finally:

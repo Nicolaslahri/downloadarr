@@ -6,6 +6,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from app.services.events import bus
+from app.services.trackers import enhance_magnet
+
 AUDIO_EXTS = {".mp3", ".m4a", ".flac", ".ogg", ".opus", ".aac", ".wav"}
 
 
@@ -50,8 +53,18 @@ async def download(
     session.add_dht_router("dht.transmissionbt.com", 6881)
     session.start_dht()
 
-    if torrent_url_or_magnet.startswith("magnet:"):
-        params = lt.parse_magnet_uri(torrent_url_or_magnet)
+    # Augment magnets with the public trackerslist — many free-source
+    # magnets carry only a couple of trackers, most stale.
+    url = torrent_url_or_magnet
+    if url.startswith("magnet:"):
+        before = url.count("&tr=")
+        url = enhance_magnet(url)
+        added = url.count("&tr=") - before
+        if added > 0:
+            bus.emit("log", f"torrent: appended {added} public trackers")
+
+    if url.startswith("magnet:"):
+        params = lt.parse_magnet_uri(url)
         params.save_path = save_dir
         handle = session.add_torrent(params)
     else:
