@@ -16,6 +16,7 @@ from app.pipeline.score import rank
 from app.pipeline.tag import tag_file
 from app.resolvers.base import ResolvedTrack
 from app.services.events import bus
+from app.services.musicbrainz import enrich as mb_enrich
 
 
 async def _set_status(track_id: int, status: TrackStatus, **fields) -> None:
@@ -69,6 +70,42 @@ async def process_track(track_id: int) -> None:
             isrc=t.isrc,
             source_url_hint=t.source_url_hint,
         )
+        already_enriched = bool(t.album_mbid or t.mb_recording_id)
+
+    # Pre-search enrichment via MusicBrainz. We always want album info
+    # so the indexer query is specific (album-shaped) rather than the
+    # broad "artist alone" fallback that returns whatever the artist
+    # ever uploaded.
+    if not already_enriched:
+        enriched = await mb_enrich(rt.artist, rt.title, rt.duration_s)
+        if enriched:
+            rt.album = enriched.album or rt.album
+            if enriched.duration_s and not rt.duration_s:
+                rt.duration_s = enriched.duration_s
+            async with SessionLocal() as session:
+                tt = await session.get(Track, track_id)
+                if tt:
+                    if enriched.album:
+                        tt.album = enriched.album
+                    tt.album_mbid = enriched.mb_release_id
+                    tt.mb_recording_id = enriched.mb_recording_id
+                    tt.track_no = enriched.track_no
+                    tt.year = enriched.year
+                    if enriched.duration_s and not tt.duration_s:
+                        tt.duration_s = enriched.duration_s
+                    session.add(tt)
+                    await session.commit()
+            bus.emit(
+                "log",
+                f"#{track_id} MB: '{rt.artist} – {rt.title}' → album "
+                f"'{enriched.album}' track {enriched.track_no} ({enriched.year})",
+            )
+        else:
+            bus.emit(
+                "log",
+                f"#{track_id} MB: no confident match for '{rt.artist} – {rt.title}'",
+                level="warn",
+            )
 
     existing = _is_already_in_library(library_root, rt)
     if existing:

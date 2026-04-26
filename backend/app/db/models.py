@@ -35,6 +35,23 @@ class Track(SQLModel, table=True):
     file_path: Optional[str] = None
     error: Optional[str] = None
     source_url_hint: Optional[str] = None
+
+    # v2: MusicBrainz enrichment
+    mb_recording_id: Optional[str] = None
+    album_mbid: Optional[str] = None
+    track_no: Optional[int] = None
+    year: Optional[int] = None
+
+    # v2: live download progress
+    bytes_done: int = Field(default=0)
+    bytes_total: int = Field(default=0)
+    speed_kbps: int = Field(default=0)
+
+    # v2: resolved quality of the file we landed
+    quality_format: Optional[str] = None
+    quality_bitrate: Optional[int] = None
+    quality_lossless: bool = Field(default=False)
+
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
