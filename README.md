@@ -6,9 +6,11 @@ No Prowlarr, no SABnzbd, no qBittorrent. You enter your NZBGeek/Newshosting/Torz
 
 Streaming services and YouTube are used **only to enumerate the tracklist** — the actual audio is always pulled from Usenet or torrents at FLAC / 320 kbps quality.
 
-## Run on a Linux server (recommended)
+## Deploy
 
-Self-hosted on Linux via Docker is the primary deployment target. The image includes everything: `ffmpeg`, `par2`, `unrar`, `p7zip-full`, and `libtorrent` — no manual binary installs, no PATH wrangling.
+### Linux server (recommended)
+
+Self-hosted on Linux via Docker is the primary deployment target. The image bakes in `ffmpeg`, `par2`, `unrar`, `p7zip-full`, and `libtorrent` — no manual binary installs.
 
 ```bash
 git clone https://github.com/Nicolaslahri/downloadarr.git musicdl
@@ -16,21 +18,35 @@ cd musicdl
 docker compose up -d --build
 ```
 
-That's it.
-
 - Web UI: http://your-server:3000
 - API docs: http://your-server:8000/docs
 
 Bind mounts (override via env / compose file):
-- `./backend/.data` — SQLite, settings, auto-installed tools (persisted)
+- `./backend/.data` — SQLite, `settings.json`, auto-installed tools (persisted)
 - `./library` (or `$LIBRARY_PATH`) — final tagged audio library
 - `./downloads` — in-flight scratch space; safe to wipe
 
-To upgrade: `git pull && docker compose up -d --build`.
+Upgrade: `git pull && docker compose up -d --build`.
 
-## Run locally (one command, no Docker)
+### Windows
 
-Backend defaults to a local SQLite file at `backend/.data/musicdl.db`, so the whole stack runs without Docker. Linux/macOS users get par2/unrar from their package manager (`apt install par2 unrar` / `brew install par2 unrar`); Windows users get them auto-installed at startup or via the upload escape hatch in Settings → Tools.
+Two options:
+
+1. **Docker Desktop (recommended)** — exact same `docker compose up -d --build` works. Docker Desktop runs the Linux container via WSL2, so you get the same pre-installed `ffmpeg`/`par2`/`unrar`/`libtorrent` and zero Windows-specific friction.
+
+2. **Native (no Docker)** — `npm run start` from `web/` boots both halves. SQLite by default, so no infra. par2 and unrar (only needed for Usenet RAR releases) are handled automatically by the Tools tab in Settings:
+   - `par2` auto-installs from the par2cmdline-turbo GitHub release on first run.
+   - `unrar` tries WinRAR's install path → 7-Zip → `winget install 7zip.7zip --scope user`. If any one of those is on your machine, it's hands-off. If not, the Upload button in the Tools tab takes care of it.
+
+### macOS / Linux dev (no Docker)
+
+```bash
+brew install par2 unrar           # macOS
+sudo apt install par2 unrar       # Debian/Ubuntu (unrar from non-free)
+cd backend && python -m venv .venv && . .venv/bin/activate && pip install -e .
+cd ../web && npm install
+npm run start
+```
 
 ### One-time setup
 
