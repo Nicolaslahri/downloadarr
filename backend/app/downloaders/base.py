@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from app.indexers.base import Candidate
+from app.resolvers.base import ResolvedTrack
 
 
 @dataclass
@@ -17,4 +18,6 @@ class Downloader(Protocol):
 
     def supports(self, candidate: Candidate) -> bool: ...
 
-    async def download(self, candidate: Candidate, dest_dir: str) -> DownloadResult: ...
+    async def download(
+        self, candidate: Candidate, dest_dir: str, track: ResolvedTrack
+    ) -> DownloadResult: ...

@@ -68,6 +68,9 @@ async def process_track(track_id: int) -> None:
             album=t.album,
             duration_s=t.duration_s,
             isrc=t.isrc,
+            track_no=t.track_no,
+            year=t.year,
+            mb_recording_id=t.mb_recording_id,
             source_url_hint=t.source_url_hint,
         )
         already_enriched = bool(t.album_mbid or t.mb_recording_id)
@@ -80,6 +83,9 @@ async def process_track(track_id: int) -> None:
         enriched = await mb_enrich(rt.artist, rt.title, rt.duration_s)
         if enriched:
             rt.album = enriched.album or rt.album
+            rt.track_no = enriched.track_no or rt.track_no
+            rt.year = enriched.year or rt.year
+            rt.mb_recording_id = enriched.mb_recording_id or rt.mb_recording_id
             if enriched.duration_s and not rt.duration_s:
                 rt.duration_s = enriched.duration_s
             async with SessionLocal() as session:
@@ -144,7 +150,7 @@ async def process_track(track_id: int) -> None:
             continue
         await _set_status(track_id, TrackStatus.downloading)
         try:
-            result = await downloader.download(cand, env_settings.downloads_path)
+            result = await downloader.download(cand, env_settings.downloads_path, rt)
         except NotImplementedError as e:
             last_err = str(e)
             continue

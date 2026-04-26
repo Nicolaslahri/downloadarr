@@ -12,14 +12,6 @@ AUDIO_EXTS = {
     ".mka", ".ape", ".wv", ".alac", ".tta", ".dsf", ".dff", ".tak",
 }
 
-# These are common in Usenet releases but aren't audio. Logged for
-# diagnostics so the user can see what they actually pulled down.
-NON_AUDIO_OF_INTEREST = {
-    ".mkv", ".mp4", ".avi", ".webm",  # video
-    ".iso", ".bin", ".cue",            # disc images
-    ".rar", ".par2", ".sfv", ".nfo", ".nzb", ".jpg", ".png", ".pdf",
-}
-
 
 def _which(name: str) -> str | None:
     return shutil.which(name)
@@ -44,8 +36,7 @@ async def par2_repair(work_dir: Path) -> bool:
     if not par2_bin:
         bus.emit(
             "log",
-            "par2 binary not on PATH — skipping repair. Install par2cmdline-turbo "
-            "for guaranteed integrity: github.com/animetosho/par2cmdline-turbo/releases",
+            "par2 binary not on PATH — skipping repair",
             level="warn",
         )
         return True
@@ -73,14 +64,13 @@ async def unrar(work_dir: Path) -> bool:
         if audio_outside_rar:
             bus.emit(
                 "log",
-                "unrar not on PATH — using audio files outside the RAR set. Install "
-                "unrar (rarlab.com) to also extract archived content.",
+                "unrar not on PATH — using audio files outside the RAR set",
                 level="warn",
             )
             return True
         raise RuntimeError(
-            "This release is RAR-archived and no unrar binary is on PATH. "
-            "Install unrar from rarlab.com (UnRAR.exe → place on PATH) and retry."
+            "Release is RAR-archived and no unrar binary is on PATH. "
+            "Install unrar (apt install unrar / Settings → Tools)."
         )
 
     first = rars[0]
@@ -101,7 +91,6 @@ def find_audio_files(work_dir: Path) -> list[Path]:
 
 
 def _summarize_dir(work_dir: Path, max_lines: int = 12) -> str:
-    """Compact ls of the work dir for diagnostic logging."""
     if not work_dir.exists():
         return "<work dir gone>"
     rows: list[str] = []
@@ -118,8 +107,12 @@ def _summarize_dir(work_dir: Path, max_lines: int = 12) -> str:
     return "; ".join(rows) or "<empty>"
 
 
-async def post_process(work_dir: Path) -> Path:
-    """Run par2 → unrar → return the largest audio file found."""
+async def post_process(work_dir: Path) -> list[Path]:
+    """Run par2 → unrar → return ALL audio files found.
+
+    Caller (track_picker) chooses which one is the target track. Raises
+    if no audio at all turns up.
+    """
     await par2_repair(work_dir)
     await unrar(work_dir)
     audio = find_audio_files(work_dir)
@@ -129,5 +122,4 @@ async def post_process(work_dir: Path) -> Path:
             f"no audio file in extracted set — release contents: [{summary}]. "
             "This release probably isn't what we wanted (video/disc image, or unrelated)."
         )
-    audio.sort(key=lambda p: p.stat().st_size, reverse=True)
-    return audio[0]
+    return audio

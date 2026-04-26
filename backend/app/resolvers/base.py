@@ -9,6 +9,9 @@ class ResolvedTrack:
     album: Optional[str] = None
     duration_s: Optional[int] = None
     isrc: Optional[str] = None
+    track_no: Optional[int] = None
+    year: Optional[int] = None
+    mb_recording_id: Optional[str] = None
     source_url_hint: Optional[str] = None
 
 
