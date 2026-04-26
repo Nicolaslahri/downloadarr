@@ -110,6 +110,34 @@ async def ensure_par2(force: bool = False) -> dict[str, Any]:
         return _status("par2", available=False, path=None, auto=True, error=str(e))
 
 
+async def _extract_sfx_with_7z(sfx_path: Path, target_dir: Path) -> Path | None:
+    """7-Zip can read rarlab's SFX (it's a RAR archive with an exe prefix).
+    No UAC required, no installer side-effects. Returns the extracted
+    UnRAR.exe path if it succeeded, else None."""
+    sevenz = _which("7z") or _which("7za") or _which("7zr")
+    if not sevenz:
+        return None
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            sevenz, "x", str(sfx_path), f"-o{target_dir}", "-y", "-bso0", "-bsp0",
+            cwd=str(target_dir),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        try:
+            await asyncio.wait_for(proc.communicate(), timeout=60)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.communicate()
+    except Exception:
+        return None
+    for name in ("UnRAR.exe", "unrar.exe"):
+        cand = target_dir / name
+        if cand.exists() and cand.stat().st_size > 50_000:
+            return cand
+    return None
+
+
 async def ensure_unrar(force: bool = False) -> dict[str, Any]:
     TOOLS_DIR.mkdir(parents=True, exist_ok=True)
     _augment_path(TOOLS_DIR)
@@ -131,14 +159,27 @@ async def ensure_unrar(force: bool = False) -> dict[str, Any]:
             error="unrar not found. Install via your package manager: `apt install unrar` or `brew install unrar`.",
         )
 
-    bus.emit("log", "unrar: attempting auto-install from rarlab SFX (best-effort)")
+    bus.emit("log", "unrar: downloading rarlab SFX")
     sfx_path = TOOLS_DIR / "_unrar_sfx.exe"
     try:
         sfx_bytes = await _download("https://www.rarlab.com/rar/unrarw64.exe")
         sfx_path.write_bytes(sfx_bytes)
 
-        # rarlab's SFX is RAR's own self-extractor. Try silent flags
-        # in order; some versions accept -s, others /S.
+        # 1) Best path: extract the embedded RAR archive with 7-Zip if it's
+        #    on the PATH. No UAC, no installer side-effects.
+        bus.emit("log", "unrar: trying 7-Zip extraction")
+        extracted = await _extract_sfx_with_7z(sfx_path, TOOLS_DIR)
+        if extracted:
+            if extracted != target:
+                target.write_bytes(extracted.read_bytes())
+                if extracted != target:
+                    extracted.unlink(missing_ok=True)
+            sfx_path.unlink(missing_ok=True)
+            bus.emit("log", f"unrar installed via 7-Zip → {target}")
+            return _status("unrar", available=True, path=str(target), auto=True)
+
+        # 2) Fallback: try silent flags. rarlab's SFX rarely respects these
+        #    without elevation, but cheap to try.
         for args in [
             [str(sfx_path), "-s", f"-d{TOOLS_DIR}"],
             [str(sfx_path), "/S", f"/D={TOOLS_DIR}"],
@@ -152,13 +193,12 @@ async def ensure_unrar(force: bool = False) -> dict[str, Any]:
                     stderr=asyncio.subprocess.STDOUT,
                 )
                 try:
-                    await asyncio.wait_for(proc.communicate(), timeout=30)
+                    await asyncio.wait_for(proc.communicate(), timeout=20)
                 except asyncio.TimeoutError:
                     proc.kill()
                     await proc.communicate()
             except Exception:
                 continue
-
             for cand in (
                 target,
                 TOOLS_DIR / "UnRAR.exe",
@@ -169,7 +209,7 @@ async def ensure_unrar(force: bool = False) -> dict[str, Any]:
                     if cand != target:
                         target.write_bytes(cand.read_bytes())
                     sfx_path.unlink(missing_ok=True)
-                    bus.emit("log", f"unrar installed → {target}")
+                    bus.emit("log", f"unrar installed via SFX → {target}")
                     return _status("unrar", available=True, path=str(target), auto=True)
 
         sfx_path.unlink(missing_ok=True)
@@ -178,11 +218,36 @@ async def ensure_unrar(force: bool = False) -> dict[str, Any]:
             available=False,
             path=None,
             auto=True,
-            error="rarlab SFX did not silent-extract (likely needs UAC). Drop UnRAR.exe into backend/.data/tools/ manually and we'll pick it up.",
+            error=(
+                "Auto-install failed (no 7-Zip on PATH and the rarlab SFX needs UAC). "
+                "Click the Upload button and pick UnRAR.exe from rarlab.com — no admin needed."
+            ),
         )
     except Exception as e:
         sfx_path.unlink(missing_ok=True)
         return _status("unrar", available=False, path=None, auto=True, error=str(e))
+
+
+def save_uploaded_tool(filename: str, content: bytes) -> dict[str, Any]:
+    """Whitelist + persist a user-uploaded tool binary."""
+    TOOLS_DIR.mkdir(parents=True, exist_ok=True)
+    stem = filename.lower().rsplit(".", 1)[0].rstrip(" _-")
+    name_map = {
+        "unrar": "UnRAR.exe" if _is_windows() else "unrar",
+        "par2": "par2.exe" if _is_windows() else "par2",
+        "par2cmdline": "par2.exe" if _is_windows() else "par2",
+        "par2j64": "par2.exe" if _is_windows() else "par2",
+    }
+    if stem not in name_map:
+        return {
+            "ok": False,
+            "error": f"Filename '{filename}' isn't on the allow-list. Pick UnRAR.exe or par2.exe.",
+        }
+    target = TOOLS_DIR / name_map[stem]
+    target.write_bytes(content)
+    _augment_path(TOOLS_DIR)
+    bus.emit("log", f"uploaded tool installed → {target}")
+    return {"ok": True, "name": name_map[stem], "path": str(target), "size": len(content)}
 
 
 async def ensure_all(force: bool = False) -> dict[str, dict[str, Any]]:

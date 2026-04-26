@@ -33,7 +33,8 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { TestButton } from "@/components/test-button";
-import { Wrench, CheckCircle2, AlertTriangle, Download } from "lucide-react";
+import { Wrench, CheckCircle2, AlertTriangle, Download, Upload } from "lucide-react";
+import { useRef } from "react";
 import type { ToolsStatus } from "@/lib/api";
 
 export default function SettingsPage() {
@@ -690,7 +691,7 @@ function ToolsCard() {
         ) : (
           <p className="text-sm text-fg-muted">Loading tool status…</p>
         )}
-        <div className="mt-2 flex gap-2">
+        <div className="mt-2 flex flex-wrap gap-2">
           <Button
             variant="outline"
             size="sm"
@@ -708,15 +709,58 @@ function ToolsCard() {
           >
             {installing === "force" ? "Reinstalling…" : "Reinstall all"}
           </Button>
+          <UploadToolButton onUploaded={() => mutate()} />
         </div>
         <p className="mt-2 text-[11px] text-fg-subtle">
-          unrar may need a manual step on Windows if the rarlab SFX can't silent-extract under your
-          user account. If install keeps failing, download UnRAR.exe from rarlab.com and drop it
-          into <code className="font-mono">backend/.data/tools/</code> — the app will pick it up
-          on the next status check.
+          If auto-install for unrar can't find a way to extract the SFX without UAC, click{" "}
+          <span className="font-medium text-fg">Upload</span> and pick{" "}
+          <code className="font-mono">UnRAR.exe</code> from rarlab.com (free, no admin) — we'll
+          drop it into <code className="font-mono">backend/.data/tools/</code> for you.
         </p>
       </CardContent>
     </Card>
+  );
+}
+
+function UploadToolButton({ onUploaded }: { onUploaded: () => void }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function pick(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    setBusy(true);
+    try {
+      const r = await api.uploadTool(f);
+      toast.success(`${r.name} installed (${(r.size / 1024).toFixed(0)} KB)`);
+      onUploaded();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <input
+        ref={inputRef}
+        type="file"
+        hidden
+        accept=".exe,application/octet-stream"
+        onChange={pick}
+      />
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => inputRef.current?.click()}
+        disabled={busy}
+      >
+        <Upload className="h-3.5 w-3.5" />
+        {busy ? "Uploading…" : "Upload UnRAR.exe / par2.exe"}
+      </Button>
+    </>
   );
 }
 

@@ -105,6 +105,20 @@ export const api = {
     jfetch<ToolsStatus>(`/settings/tools/install${force ? "?force=true" : ""}`, {
       method: "POST",
     }),
+
+  uploadTool: async (file: File): Promise<{ ok: boolean; name: string; path: string; size: number }> => {
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await fetch(`${API_URL}/settings/tools/upload`, {
+      method: "POST",
+      body: fd,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`${res.status} ${res.statusText}${text ? ` — ${text}` : ""}`);
+    }
+    return res.json();
+  },
 };
 
 export interface TestResult {

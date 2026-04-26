@@ -5,12 +5,16 @@ import json
 import xml.etree.ElementTree as ET
 
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from app.config import settings as env_settings
 from app.db.settings_store import load_all, merge_with_env, parse_list, patch as patch_settings
-from app.services.tools import ensure_all as ensure_tools, status as tools_status
+from app.services.tools import (
+    ensure_all as ensure_tools,
+    save_uploaded_tool,
+    status as tools_status,
+)
 from app.services.usenet.nntp import NntpConfig, _Conn
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -329,6 +333,19 @@ async def get_tools() -> dict:
 @router.post("/tools/install")
 async def install_tools(force: bool = False) -> dict:
     return await ensure_tools(force=force)
+
+
+@router.post("/tools/upload")
+async def upload_tool(file: UploadFile = File(...)) -> dict:
+    content = await file.read()
+    if len(content) > 50_000_000:
+        raise HTTPException(413, "File too large (max 50 MB)")
+    if len(content) < 10_000:
+        raise HTTPException(400, "File too small to be a real binary")
+    result = save_uploaded_tool(file.filename or "", content)
+    if not result.get("ok"):
+        raise HTTPException(400, result.get("error", "Upload rejected"))
+    return result
 
 
 @router.post("/test/spotify", response_model=TestResult)
