@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from app.db.session import SessionLocal
 from app.db.settings_store import load_all, merge_with_env
 from app.downloaders import pick as pick_downloader
 from app.indexers import search_all
+from app.indexers.base import Candidate, SourceKind
 from app.pipeline.organize import organize
 from app.pipeline.score import rank
 from app.pipeline.tag import tag_file
@@ -132,6 +134,33 @@ async def process_track(track_id: int) -> None:
         return
 
     candidates = await search_all(rt, cfg)
+
+    profile = cfg.get("quality_profile") or "best"
+    preferred = [s for s in (cfg.get("preferred_sources") or "").split(",") if s]
+    ranked = rank(candidates, rt, profile, preferred)
+
+    # Persist for the candidates panel so user can see what was found.
+    cand_payload = [
+        {
+            "source": c.source.value,
+            "url": c.url,
+            "title": c.title,
+            "score": round(c.score, 3),
+            "size": int((c.extra or {}).get("size") or 0),
+            "indexer": (c.extra or {}).get("indexer") or "",
+            "seeders": int((c.extra or {}).get("seeders") or 0),
+            "format": c.format or "",
+            "bitrate_kbps": c.bitrate_kbps or 0,
+        }
+        for c in ranked[:25]
+    ]
+    async with SessionLocal() as session:
+        tt = await session.get(Track, track_id)
+        if tt:
+            tt.candidates_json = json.dumps(cand_payload)
+            session.add(tt)
+            await session.commit()
+
     if not candidates:
         await _set_status(
             track_id,
@@ -139,10 +168,6 @@ async def process_track(track_id: int) -> None:
             error="No matches from any configured indexer for this track.",
         )
         return
-
-    profile = cfg.get("quality_profile") or "best"
-    preferred = [s for s in (cfg.get("preferred_sources") or "").split(",") if s]
-    ranked = rank(candidates, rt, profile, preferred)
 
     last_err: str | None = None
     for cand in ranked[:5]:
@@ -180,3 +205,65 @@ async def process_track(track_id: int) -> None:
         TrackStatus.failed,
         error=last_err or "no compatible downloader for any candidate",
     )
+
+
+async def process_with_candidate(track_id: int, cand_dict: dict) -> None:
+    """Force a specific candidate (used by the manual 'Use this' button
+    in the candidates panel)."""
+    async with SessionLocal() as session:
+        cfg_db_settings = await session.get(Track, track_id)  # warm
+    cfg = merge_with_env(load_all(), env_settings)
+    library_root = cfg.get("library_path") or env_settings.library_path
+
+    async with SessionLocal() as session:
+        t = await session.get(Track, track_id)
+        if not t:
+            return
+        rt = ResolvedTrack(
+            artist=t.artist, title=t.title, album=t.album,
+            duration_s=t.duration_s, isrc=t.isrc,
+            track_no=t.track_no, year=t.year,
+            mb_recording_id=t.mb_recording_id,
+            source_url_hint=t.source_url_hint,
+        )
+
+    try:
+        kind = SourceKind(cand_dict.get("source") or "nzb")
+    except ValueError:
+        await _set_status(track_id, TrackStatus.failed, error=f"unknown source kind: {cand_dict.get('source')!r}")
+        return
+
+    cand = Candidate(
+        source=kind,
+        url=cand_dict.get("url", ""),
+        title=cand_dict.get("title", ""),
+        score=float(cand_dict.get("score") or 0),
+        extra={"indexer": cand_dict.get("indexer") or "", "size": cand_dict.get("size") or 0},
+    )
+    if not cand.url:
+        await _set_status(track_id, TrackStatus.failed, error="manual candidate had no URL")
+        return
+
+    downloader = pick_downloader(cand, cfg)
+    if not downloader:
+        await _set_status(track_id, TrackStatus.failed, error=f"no downloader for source {cand.source.value}")
+        return
+
+    await _set_status(track_id, TrackStatus.downloading, error=None)
+    prog = TrackProgress(track_id=track_id)
+    try:
+        result = await downloader.download(cand, env_settings.downloads_path, rt, progress=prog)
+        await prog.finalize()
+    except Exception as e:
+        await _set_status(track_id, TrackStatus.failed, error=f"{downloader.name}: {e}")
+        return
+
+    await _set_status(track_id, TrackStatus.tagging)
+    await tag_file(result.file_path, rt)
+    try:
+        final = organize(result.file_path, rt, library_root)
+    except Exception as e:
+        await _set_status(track_id, TrackStatus.failed, error=f"organize: {e}")
+        return
+    await _set_status(track_id, TrackStatus.done, file_path=final, error=None)
+    bus.emit("log", f"#{track_id} done (manual candidate) → {final}")

@@ -52,6 +52,10 @@ class Track(SQLModel, table=True):
     quality_bitrate: Optional[int] = None
     quality_lossless: bool = Field(default=False)
 
+    # v2: snapshot of indexer candidates from the most recent search,
+    # JSON-encoded list of {source, url, title, score, size, indexer}.
+    candidates_json: Optional[str] = None
+
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 

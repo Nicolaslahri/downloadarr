@@ -15,6 +15,7 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPill } from "@/components/status-pill";
 import { TrackProgressBar } from "@/components/track-progress";
+import { CandidatesPanel, ExpandCandidatesButton } from "@/components/candidate-row";
 
 function fmtDuration(s: number | null) {
   if (!s) return "—";
@@ -32,6 +33,7 @@ export default function PlaylistDetailPage() {
     { refreshInterval: 2000 }
   );
   const [actioning, setActioning] = useState(false);
+  const [openCandidates, setOpenCandidates] = useState<number | null>(null);
 
   async function retry(track: Track) {
     try {
@@ -210,7 +212,13 @@ export default function PlaylistDetailPage() {
                         </span>
                       )}
                     </div>
-                    <div className="flex justify-end">
+                    <div className="flex items-center justify-end gap-1">
+                      <ExpandCandidatesButton
+                        open={openCandidates === t.id}
+                        onToggle={() =>
+                          setOpenCandidates(openCandidates === t.id ? null : t.id)
+                        }
+                      />
                       {(t.status === "failed" || t.status === "done") && (
                         <Button
                           size="sm"
@@ -225,11 +233,35 @@ export default function PlaylistDetailPage() {
                   </motion.li>
                 ))}
               </AnimatePresence>
+              {openCandidates !== null && (
+                <li className="border-b border-border/60">
+                  <div className="bg-bg-subtle/30 px-4 py-3">
+                    <CandidatesInline
+                      trackId={openCandidates}
+                      onClose={() => setOpenCandidates(null)}
+                    />
+                  </div>
+                </li>
+              )}
             </ul>
           </Card>
         </>
       )}
     </PageShell>
+  );
+}
+
+function CandidatesInline({
+  trackId,
+  onClose,
+}: {
+  trackId: number;
+  onClose: () => void;
+}) {
+  return (
+    <div>
+      <CandidatesPanel trackId={trackId} open={true} onClose={onClose} />
+    </div>
   );
 }
 

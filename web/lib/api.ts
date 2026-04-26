@@ -52,6 +52,15 @@ export const api = {
   retryTrack: (id: number) =>
     jfetch<Track>(`/tracks/${id}/retry`, { method: "POST" }),
 
+  getCandidates: (id: number) =>
+    jfetch<TrackCandidate[]>(`/tracks/${id}/candidates`),
+
+  useCandidate: (id: number, body: TrackCandidate) =>
+    jfetch<{ ok: boolean }>(`/tracks/${id}/use-candidate`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
   listLibrary: () => jfetch<LibraryEntry[]>("/library"),
 
   getSettings: () => jfetch<AppSettings>("/settings"),
@@ -136,6 +145,18 @@ export interface ToolStatus {
 }
 
 export type ToolsStatus = Record<"par2" | "unrar", ToolStatus>;
+
+export interface TrackCandidate {
+  source: "nzb" | "torrent" | "ytdlp" | "spotdl" | "zotify" | string;
+  url: string;
+  title: string;
+  score: number;
+  size?: number;
+  indexer?: string;
+  seeders?: number;
+  format?: string;
+  bitrate_kbps?: number;
+}
 
 export function jobsEventSource(): EventSource | null {
   if (typeof window === "undefined") return null;

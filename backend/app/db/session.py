@@ -23,6 +23,7 @@ _NEW_TRACK_COLUMNS: dict[str, str] = {
     "quality_bitrate": "INTEGER",
     "quality_lossless": "INTEGER NOT NULL DEFAULT 0",
     "source_url_hint": "TEXT",
+    "candidates_json": "TEXT",
 }
 
 
