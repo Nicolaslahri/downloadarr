@@ -119,7 +119,24 @@ async def manual_search(
 
     cfg = merge_with_env(load_all(), env_settings)
     raw: list[Candidate] = await search_all(rt, cfg)
-    raw.sort(key=lambda c: c.score, reverse=True)
+
+    # Rank by how many query words actually appear in each release name
+    # — indexers will return surprising garbage otherwise.
+    import re as _re
+
+    query_words = [
+        w for w in _re.split(r"\s+", query.lower()) if len(w) > 1
+    ]
+
+    def _relevance(c: Candidate) -> float:
+        title_norm = _re.sub(r"[^a-z0-9]+", " ", c.title.lower())
+        tokens = set(title_norm.split())
+        hits = sum(1 for w in query_words if w in tokens)
+        return c.score + (hits / max(1, len(query_words))) * 2.5
+
+    if query_words:
+        raw = [c for c in raw if _relevance(c) >= 0.6]
+    raw.sort(key=_relevance, reverse=True)
 
     payload = [
         {

@@ -1,7 +1,6 @@
 "use client";
 
 import useSWR from "swr";
-import { motion } from "framer-motion";
 import Link from "next/link";
 import { Activity, Pause, Play, Tag } from "lucide-react";
 import type { TrackInQueue } from "@/lib/types";
@@ -11,7 +10,8 @@ import { Card } from "@/components/ui/card";
 
 export default function QueuePage() {
   const { data, isLoading, mutate } = useSWR<TrackInQueue[]>("/queue", {
-    refreshInterval: 1500,
+    refreshInterval: 2500,
+    revalidateOnFocus: false,
   });
 
   const tracks = data ?? [];
@@ -132,10 +132,8 @@ function Stat({
       ? "text-success border-success/30 bg-success/5"
       : "text-fg border-border bg-bg-subtle/40";
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 4 }}
-      animate={{ opacity: 1, y: 0 }}
-      className={`flex items-center gap-3 rounded-lg border p-3 ${tone}`}
+    <div
+      className={`flex items-center gap-3 rounded-lg border p-3 transition-colors ${tone}`}
     >
       <Icon className="h-5 w-5" />
       <div className="min-w-0">
@@ -144,6 +142,6 @@ function Stat({
         </div>
         <div className="text-xl font-semibold tracking-tight">{value}</div>
       </div>
-    </motion.div>
+    </div>
   );
 }

@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import useSWR from "swr";
-import { motion } from "framer-motion";
 import Link from "next/link";
 import { Check, History as HistoryIcon, X } from "lucide-react";
 import type { TrackInQueue, TrackStatus } from "@/lib/types";
@@ -19,7 +18,8 @@ const FILTERS: { id: "all" | TrackStatus; label: string }[] = [
 
 export default function HistoryPage() {
   const { data, isLoading, mutate } = useSWR<TrackInQueue[]>("/history?limit=300", {
-    refreshInterval: 5000,
+    refreshInterval: 8000,
+    revalidateOnFocus: false,
   });
   const [filter, setFilter] = useState<(typeof FILTERS)[number]["id"]>("all");
 
@@ -102,9 +102,7 @@ function Stat({
       ? "text-danger border-danger/30 bg-danger/5"
       : "text-fg border-border bg-bg-subtle/40";
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 4 }}
-      animate={{ opacity: 1, y: 0 }}
+    <div
       className={`flex items-center gap-3 rounded-lg border p-3 ${tone}`}
     >
       <Icon className="h-5 w-5" />
@@ -114,6 +112,6 @@ function Stat({
         </div>
         <div className="text-xl font-semibold tracking-tight">{value}</div>
       </div>
-    </motion.div>
+    </div>
   );
 }

@@ -1,6 +1,5 @@
 "use client";
 
-import { motion } from "framer-motion";
 import { AlertTriangle, RefreshCw, Search, X } from "lucide-react";
 import { useState } from "react";
 import Link from "next/link";
@@ -110,11 +109,8 @@ export function TrackCard({
   const left = downloading ? Math.max(0, track.bytes_total - track.bytes_done) : 0;
 
   return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, y: 4 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="group rounded-xl border border-border bg-bg-subtle/40 p-4 transition-colors hover:border-border-strong"
+    <div
+      className="group rounded-xl border border-border bg-bg-subtle/40 p-4 transition-colors animate-fadeIn hover:border-border-strong"
     >
       <div className="flex items-start gap-4">
         <ArtPlaceholder track={track} />
@@ -226,6 +222,6 @@ export function TrackCard({
         onOpenChange={setSearchOpen}
         onPicked={() => onChange?.()}
       />
-    </motion.div>
+    </div>
   );
 }

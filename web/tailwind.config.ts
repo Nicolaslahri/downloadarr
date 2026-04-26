@@ -59,6 +59,14 @@ export default {
           from: { opacity: "0", transform: "translateY(4px)" },
           to: { opacity: "1", transform: "translateY(0)" },
         },
+        dialogIn: {
+          from: { opacity: "0", transform: "translate(-50%, calc(-50% + 8px)) scale(0.97)" },
+          to: { opacity: "1", transform: "translate(-50%, -50%) scale(1)" },
+        },
+        overlayIn: {
+          from: { opacity: "0" },
+          to: { opacity: "1" },
+        },
         blink: {
           "0%, 100%": { opacity: "1" },
           "50%": { opacity: "0.2" },
@@ -73,6 +81,8 @@ export default {
         pulseGlow: "pulseGlow 2s ease-in-out infinite",
         scan: "scan 3s linear infinite",
         fadeIn: "fadeIn 0.4s ease-out both",
+        dialogIn: "dialogIn 0.18s cubic-bezier(0.16, 1, 0.3, 1)",
+        overlayIn: "overlayIn 0.15s ease-out",
         blink: "blink 1.4s ease-in-out infinite",
         gradient: "gradient 8s ease infinite",
       },

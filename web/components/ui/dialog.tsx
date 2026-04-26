@@ -14,12 +14,17 @@ export const DialogContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
 >(({ className, children, ...props }, ref) => (
   <DialogPrimitive.Portal>
-    <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm data-[state=open]:animate-fadeIn" />
+    <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/65 backdrop-blur-sm data-[state=open]:animate-overlayIn" />
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed left-1/2 top-1/2 z-50 w-[95vw] max-w-3xl -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-bg-raised p-6 shadow-2xl",
-        "data-[state=open]:animate-fadeIn focus:outline-none",
+        // Position via animation transform — `dialogIn` keyframe ends at
+        // `translate(-50%, -50%)` so the dialog stays centered.
+        "fixed left-1/2 top-1/2 z-50 w-[95vw] max-w-3xl",
+        "rounded-xl border border-border bg-bg-raised p-6 shadow-2xl",
+        "data-[state=open]:animate-dialogIn focus:outline-none",
+        // Fallback for non-animation: still centered.
+        "[transform:translate(-50%,-50%)]",
         className
       )}
       {...props}
