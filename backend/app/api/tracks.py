@@ -19,6 +19,11 @@ from app.services.runner import submit
 router = APIRouter(prefix="/tracks", tags=["tracks"])
 
 
+class RejectReason(BaseModel):
+    spec: str
+    reason: str
+
+
 class CandidateOut(BaseModel):
     source: str
     url: str
@@ -29,6 +34,8 @@ class CandidateOut(BaseModel):
     seeders: int = 0
     format: str = ""
     bitrate_kbps: int = 0
+    accepted: bool = True
+    reject_reasons: list[RejectReason] = []
 
 
 class UseCandidateRequest(BaseModel):

@@ -178,6 +178,8 @@ export interface TrackCandidate {
   seeders?: number;
   format?: string;
   bitrate_kbps?: number;
+  accepted?: boolean;
+  reject_reasons?: { spec: string; reason: string }[];
 }
 
 export function jobsEventSource(): EventSource | null {
