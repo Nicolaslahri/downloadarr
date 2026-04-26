@@ -401,35 +401,32 @@ export default function PlaylistDetailPage() {
                   );
                 })}
               </AnimatePresence>
-              {openCandidates !== null && (
-                <li className="border-b border-border/60">
-                  <div className="bg-bg-subtle/30 px-4 py-3">
-                    <CandidatesInline
-                      trackId={openCandidates}
-                      onClose={() => setOpenCandidates(null)}
-                    />
-                  </div>
-                </li>
-              )}
             </ul>
           </Card>
+
+          {openCandidates !== null && (
+            <Card className="mt-3 border-accent/30 bg-bg-subtle/40 p-4">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="font-mono text-[10px] uppercase tracking-widest text-accent">
+                  candidates · track #{openCandidates}
+                </span>
+                <button
+                  onClick={() => setOpenCandidates(null)}
+                  className="font-mono text-[10px] uppercase tracking-widest text-fg-subtle hover:text-fg"
+                >
+                  close
+                </button>
+              </div>
+              <CandidatesPanel
+                trackId={openCandidates}
+                open={true}
+                onClose={() => setOpenCandidates(null)}
+              />
+            </Card>
+          )}
         </>
       )}
     </PageShell>
-  );
-}
-
-function CandidatesInline({
-  trackId,
-  onClose,
-}: {
-  trackId: number;
-  onClose: () => void;
-}) {
-  return (
-    <div>
-      <CandidatesPanel trackId={trackId} open={true} onClose={onClose} />
-    </div>
   );
 }
 
