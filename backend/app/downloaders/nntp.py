@@ -76,7 +76,11 @@ class NntpDownloader:
             raise RuntimeError("NZB had no files")
         bus.emit("log", f"NZB: {len(nzb.files)} files, ~{nzb.total_bytes / 1024 / 1024:.1f} MB")
 
-        # 2. Download everything into a temp work dir
+        # 2. Download everything into a temp work dir.
+        #    `try/finally` ensures the work_dir is always cleaned, even
+        #    when post_process or track_picker raises — otherwise failed
+        #    runs accumulate hundreds of MB in the workspace.
+        Path(dest_dir).mkdir(parents=True, exist_ok=True)
         work_dir = Path(tempfile.mkdtemp(prefix="musicdl_nzb_", dir=dest_dir))
         pool = NntpPool(cfg)
 
@@ -94,44 +98,45 @@ class NntpDownloader:
                 await progress.update(done, total)
 
         try:
-            await nntp_download_files(
-                pool, nzb.files, work_dir,
-                progress=on_progress,
-                bytes_progress=on_bytes,
+            try:
+                await nntp_download_files(
+                    pool, nzb.files, work_dir,
+                    progress=on_progress,
+                    bytes_progress=on_bytes,
+                )
+            finally:
+                await pool.shutdown()
+
+            # 3. par2 → unrar → list of audio files
+            audio_files = await post_process(work_dir)
+
+            # 4. Pick the right one for this track
+            pick = pick_track_file(audio_files, track)
+            if pick is None:
+                shown = ", ".join(p.name for p in audio_files[:8])
+                extra = f" (+{len(audio_files) - 8} more)" if len(audio_files) > 8 else ""
+                raise RuntimeError(
+                    f"track-picker: couldn't confidently identify '{track.title}' among "
+                    f"{len(audio_files)} audio files: [{shown}{extra}]"
+                )
+            bus.emit(
+                "log",
+                f"track-picker: chose {pick.path.name} (score={pick.score:.2f} — "
+                f"{', '.join(pick.reasons)})",
+            )
+
+            # 5. Move the chosen file OUT of the work dir before cleanup
+            final = Path(dest_dir) / pick.path.name
+            if final.exists():
+                final.unlink()
+            os.rename(pick.path, final)
+            size = final.stat().st_size
+            return DownloadResult(
+                file_path=str(final),
+                bytes=size,
+                format=final.suffix.lstrip(".").lower(),
             )
         finally:
-            await pool.shutdown()
-
-        # 3. par2 → unrar → list of audio files
-        audio_files = await post_process(work_dir)
-
-        # 4. Pick the right one for this track
-        pick = pick_track_file(audio_files, track)
-        if pick is None:
-            shown = ", ".join(p.name for p in audio_files[:8])
-            extra = f" (+{len(audio_files) - 8} more)" if len(audio_files) > 8 else ""
-            raise RuntimeError(
-                f"track-picker: couldn't confidently identify '{track.title}' among "
-                f"{len(audio_files)} audio files: [{shown}{extra}]"
-            )
-        bus.emit(
-            "log",
-            f"track-picker: chose {pick.path.name} (score={pick.score:.2f} — {', '.join(pick.reasons)})",
-        )
-
-        # 5. Move chosen file out of the work dir; clean the rest up
-        final = Path(dest_dir) / pick.path.name
-        if final.exists():
-            final.unlink()
-        os.rename(pick.path, final)
-        try:
+            # Always nuke the work dir — success or failure. The chosen
+            # file (if any) was already moved out on the success path.
             shutil.rmtree(work_dir, ignore_errors=True)
-        except Exception:
-            pass
-
-        size = final.stat().st_size
-        return DownloadResult(
-            file_path=str(final),
-            bytes=size,
-            format=final.suffix.lstrip(".").lower(),
-        )

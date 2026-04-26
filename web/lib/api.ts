@@ -80,6 +80,25 @@ export const api = {
 
   listLibrary: () => jfetch<LibraryEntry[]>("/library"),
 
+  libraryInfo: () =>
+    jfetch<{
+      library_path: string;
+      library_exists: boolean;
+      library_writable: boolean;
+      library_track_count: number;
+      library_size_bytes: number;
+      downloads_path: string;
+      downloads_exists: boolean;
+      downloads_size_bytes: number;
+      free_bytes: number;
+    }>("/library/info"),
+
+  cleanupWorkspace: () =>
+    jfetch<{ removed_dirs: number; removed_files: number; freed_bytes: number }>(
+      "/library/cleanup",
+      { method: "POST" }
+    ),
+
   getQueue: () => jfetch<import("./types").TrackInQueue[]>("/queue"),
 
   getHistory: (limit = 200) =>

@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import jobs, library, playlists, queue as queue_api, settings as settings_api, tracks
 from app.config import settings as env_settings
 from app.db.session import init_db
+from app.services.cleanup import startup_sweep
 from app.services.events import bus
 from app.services.runner import shutdown as shutdown_runner
 from app.services.tools import ensure_all as ensure_tools
@@ -16,8 +17,9 @@ from app.services.tools import ensure_all as ensure_tools
 async def lifespan(app: FastAPI):
     await init_db()
     bus.emit("log", "MusicDownloadarr started")
-    # Don't block startup on tool downloads — fire and forget.
+    # Don't block startup on these — fire and forget.
     asyncio.create_task(ensure_tools())
+    asyncio.create_task(startup_sweep(env_settings.downloads_path))
     try:
         yield
     finally:
