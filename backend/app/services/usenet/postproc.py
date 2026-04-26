@@ -7,7 +7,18 @@ from pathlib import Path
 
 from app.services.events import bus
 
-AUDIO_EXTS = {".mp3", ".m4a", ".flac", ".ogg", ".opus", ".aac", ".wav"}
+AUDIO_EXTS = {
+    ".mp3", ".m4a", ".flac", ".ogg", ".opus", ".aac", ".wav",
+    ".mka", ".ape", ".wv", ".alac", ".tta", ".dsf", ".dff", ".tak",
+}
+
+# These are common in Usenet releases but aren't audio. Logged for
+# diagnostics so the user can see what they actually pulled down.
+NON_AUDIO_OF_INTEREST = {
+    ".mkv", ".mp4", ".avi", ".webm",  # video
+    ".iso", ".bin", ".cue",            # disc images
+    ".rar", ".par2", ".sfv", ".nfo", ".nzb", ".jpg", ".png", ".pdf",
+}
 
 
 def _which(name: str) -> str | None:
@@ -26,10 +37,6 @@ async def _run(*args: str, cwd: Path) -> tuple[int, str]:
 
 
 async def par2_repair(work_dir: Path) -> bool:
-    """Run par2 verify+repair on any *.par2 in work_dir. Best-effort: if
-    no par2 binary is on PATH we log a warning and skip — the release is
-    almost always intact (par2 is for *recovering* missing/corrupt blocks),
-    and downstream steps will surface real corruption when they hit it."""
     par2_files = sorted(work_dir.glob("*.par2"))
     if not par2_files:
         return True
@@ -54,14 +61,10 @@ async def par2_repair(work_dir: Path) -> bool:
 
 
 async def unrar(work_dir: Path) -> bool:
-    """Extract any .rar archives found in work_dir. Hard-required when
-    RARs are the only carriers of the audio — without it we have no way
-    to get the content out."""
     rars = sorted(work_dir.glob("*.rar"))
     if not rars:
         return True
 
-    # If audio files already exist outside the RARs, treat unrar as optional.
     existing_audio = find_audio_files(work_dir)
     audio_outside_rar = [p for p in existing_audio if p.suffix.lower() != ".rar"]
 
@@ -97,15 +100,34 @@ def find_audio_files(work_dir: Path) -> list[Path]:
     return out
 
 
-async def post_process(work_dir: Path) -> Path:
-    """Run par2 → unrar → return the largest audio file found.
+def _summarize_dir(work_dir: Path, max_lines: int = 12) -> str:
+    """Compact ls of the work dir for diagnostic logging."""
+    if not work_dir.exists():
+        return "<work dir gone>"
+    rows: list[str] = []
+    by_ext: dict[str, list[Path]] = {}
+    for p in work_dir.rglob("*"):
+        if p.is_file():
+            by_ext.setdefault(p.suffix.lower() or "<no ext>", []).append(p)
+    for ext, files in sorted(by_ext.items(), key=lambda kv: -sum(f.stat().st_size for f in kv[1])):
+        total = sum(f.stat().st_size for f in files)
+        rows.append(f"{ext}: {len(files)} files, {total / 1024 / 1024:.1f} MB")
+        if len(rows) >= max_lines:
+            rows.append("…")
+            break
+    return "; ".join(rows) or "<empty>"
 
-    Raises if no audio file results.
-    """
+
+async def post_process(work_dir: Path) -> Path:
+    """Run par2 → unrar → return the largest audio file found."""
     await par2_repair(work_dir)
     await unrar(work_dir)
     audio = find_audio_files(work_dir)
     if not audio:
-        raise RuntimeError("post-process: no audio file in extracted set")
+        summary = _summarize_dir(work_dir)
+        raise RuntimeError(
+            f"no audio file in extracted set — release contents: [{summary}]. "
+            "This release probably isn't what we wanted (video/disc image, or unrelated)."
+        )
     audio.sort(key=lambda p: p.stat().st_size, reverse=True)
     return audio[0]
