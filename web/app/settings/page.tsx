@@ -33,6 +33,8 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { TestButton } from "@/components/test-button";
+import { Wrench, CheckCircle2, AlertTriangle, Download } from "lucide-react";
+import type { ToolsStatus } from "@/lib/api";
 
 export default function SettingsPage() {
   const { data, mutate } = useSWR<AppSettings>("/settings");
@@ -96,6 +98,7 @@ export default function SettingsPage() {
           <TabsTrigger value="torrents"><Magnet className="h-3.5 w-3.5" /> Torrents</TabsTrigger>
           <TabsTrigger value="ai"><Brain className="h-3.5 w-3.5" /> AI</TabsTrigger>
           <TabsTrigger value="streaming"><Music2 className="h-3.5 w-3.5" /> Streaming</TabsTrigger>
+          <TabsTrigger value="tools"><Wrench className="h-3.5 w-3.5" /> Tools</TabsTrigger>
         </TabsList>
 
         <TabsContent value="library">
@@ -233,6 +236,10 @@ export default function SettingsPage() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="tools">
+          <ToolsCard />
         </TabsContent>
 
         <TabsContent value="streaming">
@@ -631,6 +638,104 @@ function TorrentIndexersCard({
         </motion.div>
       ))}
     </ListShell>
+  );
+}
+
+function ToolsCard() {
+  const { data, mutate } = useSWR<ToolsStatus>("/settings/tools", { refreshInterval: 4000 });
+  const [installing, setInstalling] = useState<"none" | "install" | "force">("none");
+
+  async function install(force: boolean) {
+    setInstalling(force ? "force" : "install");
+    try {
+      const next = await api.installTools(force);
+      mutate(next);
+      const ok = Object.values(next).every((t) => t.available);
+      if (ok) toast.success("All tools available");
+      else toast.message("Tools install ran — see status");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Install failed");
+    } finally {
+      setInstalling("none");
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Wrench className="h-4 w-4" /> External binaries
+        </CardTitle>
+        <CardDescription>
+          par2 (repair) and unrar (extraction) are needed to fully post-process Usenet
+          downloads. The app installs them automatically into{" "}
+          <code className="rounded bg-bg-hover px-1 font-mono text-xs">backend/.data/tools/</code>.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-3">
+        {data ? (
+          <>
+            <ToolRow tool={data.par2} />
+            <ToolRow tool={data.unrar} />
+          </>
+        ) : (
+          <p className="text-sm text-fg-muted">Loading tool status…</p>
+        )}
+        <div className="mt-2 flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => install(false)}
+            disabled={installing !== "none"}
+          >
+            <Download className="h-3.5 w-3.5" />
+            {installing === "install" ? "Installing…" : "Install missing"}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => install(true)}
+            disabled={installing !== "none"}
+          >
+            {installing === "force" ? "Reinstalling…" : "Reinstall all"}
+          </Button>
+        </div>
+        <p className="mt-2 text-[11px] text-fg-subtle">
+          unrar may need a manual step on Windows if the rarlab SFX can't silent-extract under your
+          user account. If install keeps failing, download UnRAR.exe from rarlab.com and drop it
+          into <code className="font-mono">backend/.data/tools/</code> — the app will pick it up
+          on the next status check.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ToolRow({ tool }: { tool: ToolsStatus[keyof ToolsStatus] }) {
+  return (
+    <div className="flex items-start gap-3 rounded-lg border border-border bg-bg-subtle/40 p-3">
+      <div className="mt-0.5">
+        {tool.available ? (
+          <CheckCircle2 className="h-5 w-5 text-success" />
+        ) : (
+          <AlertTriangle className="h-5 w-5 text-warn" />
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="font-medium uppercase tracking-wider">{tool.name}</span>
+          <Badge tone={tool.available ? "success" : "warn"}>
+            {tool.available ? (tool.auto_managed ? "auto-installed" : "system") : "missing"}
+          </Badge>
+        </div>
+        {tool.path && (
+          <div className="mt-1 truncate font-mono text-[11px] text-fg-subtle">{tool.path}</div>
+        )}
+        {tool.error && (
+          <div className="mt-1 text-[11px] text-warn">{tool.error}</div>
+        )}
+      </div>
+    </div>
   );
 }
 

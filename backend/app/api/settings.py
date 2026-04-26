@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from app.config import settings as env_settings
 from app.db.settings_store import load_all, merge_with_env, parse_list, patch as patch_settings
+from app.services.tools import ensure_all as ensure_tools, status as tools_status
 from app.services.usenet.nntp import NntpConfig, _Conn
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -318,6 +319,16 @@ async def test_anthropic(body: AnthropicTest) -> TestResult:
 class SpotifyTest(BaseModel):
     client_id: str = ""
     client_secret: str = ""
+
+
+@router.get("/tools")
+async def get_tools() -> dict:
+    return await tools_status()
+
+
+@router.post("/tools/install")
+async def install_tools(force: bool = False) -> dict:
+    return await ensure_tools(force=force)
 
 
 @router.post("/test/spotify", response_model=TestResult)

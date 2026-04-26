@@ -98,6 +98,13 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+
+  getTools: () => jfetch<ToolsStatus>("/settings/tools"),
+
+  installTools: (force = false) =>
+    jfetch<ToolsStatus>(`/settings/tools/install${force ? "?force=true" : ""}`, {
+      method: "POST",
+    }),
 };
 
 export interface TestResult {
@@ -105,6 +112,16 @@ export interface TestResult {
   message: string;
   detail?: Record<string, unknown> | null;
 }
+
+export interface ToolStatus {
+  name: string;
+  available: boolean;
+  path: string | null;
+  auto_managed: boolean;
+  error?: string;
+}
+
+export type ToolsStatus = Record<"par2" | "unrar", ToolStatus>;
 
 export function jobsEventSource(): EventSource | null {
   if (typeof window === "undefined") return null;

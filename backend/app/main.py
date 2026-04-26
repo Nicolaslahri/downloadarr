@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -8,12 +9,15 @@ from app.config import settings as env_settings
 from app.db.session import init_db
 from app.services.events import bus
 from app.services.runner import shutdown as shutdown_runner
+from app.services.tools import ensure_all as ensure_tools
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
     bus.emit("log", "MusicDownloadarr started")
+    # Don't block startup on tool downloads — fire and forget.
+    asyncio.create_task(ensure_tools())
     try:
         yield
     finally:
