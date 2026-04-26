@@ -76,6 +76,16 @@ async def get_candidates(
     return out
 
 
+@router.delete("/{track_id}")
+async def delete_track(track_id: int, session: AsyncSession = Depends(get_session)) -> dict:
+    t = await session.get(Track, track_id)
+    if not t:
+        raise HTTPException(404, "Track not found")
+    await session.delete(t)
+    await session.commit()
+    return {"ok": True}
+
+
 @router.post("/{track_id}/use-candidate")
 async def use_candidate(
     track_id: int,

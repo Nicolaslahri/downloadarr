@@ -190,6 +190,7 @@ async def import_playlist(
 
 class StartRequest(BaseModel):
     limit: int | None = None
+    track_ids: list[int] | None = None
 
 
 @router.post("/{playlist_id}/start")
@@ -204,6 +205,8 @@ async def start_playlist(
     q = select(Track.id).where(
         Track.playlist_id == playlist_id, Track.status == TrackStatus.pending
     )
+    if body and body.track_ids:
+        q = q.where(Track.id.in_(body.track_ids))
     if body and body.limit:
         q = q.limit(body.limit)
     result = await session.exec(q)
@@ -222,6 +225,43 @@ async def start_playlist(
         playlist_id=playlist_id,
     )
     return {"queued": len(track_ids)}
+
+
+@router.post("/{playlist_id}/retry-failed")
+async def retry_failed(
+    playlist_id: int, session: AsyncSession = Depends(get_session)
+) -> dict:
+    p = await session.get(Playlist, playlist_id)
+    if not p:
+        raise HTTPException(404, "Playlist not found")
+    result = await session.exec(
+        select(Track).where(
+            Track.playlist_id == playlist_id, Track.status == TrackStatus.failed
+        )
+    )
+    failed = result.all()
+    if not failed:
+        return {"queued": 0, "message": "No failed tracks to retry."}
+    for t in failed:
+        t.status = TrackStatus.pending
+        t.error = None
+        t.bytes_done = 0
+        t.bytes_total = 0
+        t.speed_kbps = 0
+        session.add(t)
+    await session.commit()
+    for t in failed:
+        submit(
+            f"process_track:{t.id}",
+            lambda tid=t.id: process_track(tid),
+            playlist_id=playlist_id,
+        )
+    bus.emit(
+        "playlist_update",
+        message=f"retrying {len(failed)} failed tracks for '{p.name}'",
+        playlist_id=playlist_id,
+    )
+    return {"queued": len(failed)}
 
 
 @router.post("/{playlist_id}/stop")

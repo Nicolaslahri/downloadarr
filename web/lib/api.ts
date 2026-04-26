@@ -33,10 +33,18 @@ export const api = {
       body: JSON.stringify({ url }),
     }),
 
-  startPlaylist: (id: number, limit?: number) =>
+  startPlaylist: (id: number, opts?: { limit?: number; trackIds?: number[] }) =>
     jfetch<{ queued: number; message?: string }>(`/playlists/${id}/start`, {
       method: "POST",
-      body: JSON.stringify(limit ? { limit } : {}),
+      body: JSON.stringify({
+        ...(opts?.limit ? { limit: opts.limit } : {}),
+        ...(opts?.trackIds ? { track_ids: opts.trackIds } : {}),
+      }),
+    }),
+
+  retryFailed: (id: number) =>
+    jfetch<{ queued: number; message?: string }>(`/playlists/${id}/retry-failed`, {
+      method: "POST",
     }),
 
   stopPlaylist: (id: number) =>
@@ -44,6 +52,9 @@ export const api = {
 
   deletePlaylist: (id: number) =>
     jfetch<{ ok: boolean }>(`/playlists/${id}`, { method: "DELETE" }),
+
+  deleteTrack: (id: number) =>
+    jfetch<{ ok: boolean }>(`/tracks/${id}`, { method: "DELETE" }),
 
   listPlaylists: () => jfetch<Playlist[]>("/playlists"),
 
