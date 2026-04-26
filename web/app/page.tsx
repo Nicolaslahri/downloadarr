@@ -86,61 +86,22 @@ export default function Home() {
         on the playlist page.
       </p>
 
-      <section className="mt-12">
-        <div className="mb-4 flex items-end justify-between">
-          <h2 className="text-sm font-semibold uppercase tracking-widest text-fg-muted">
-            Recent imports
-          </h2>
-          <Link href="/playlists" className="text-xs text-fg-muted transition-colors hover:text-fg">
-            View all →
-          </Link>
-        </div>
-
-        <div className="grid gap-3">
-          <AnimatePresence initial={false}>
-            {(recents ?? []).slice(0, 6).map((p, i) => (
-              <motion.div
-                key={p.id}
-                layout
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0, transition: { delay: i * 0.04 } }}
-                exit={{ opacity: 0, y: -8 }}
-              >
-                <Link
-                  href={`/playlists/${p.id}`}
-                  className="group flex items-center gap-4 rounded-xl border border-border bg-bg-subtle/40 px-4 py-3 transition-all hover:border-accent/40 hover:bg-bg-hover"
-                >
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-accent/30 to-success/20 ring-1 ring-white/5">
-                    <Sparkles className="h-4 w-4 text-accent-glow" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium text-fg">{p.name}</div>
-                    <div className="font-mono text-[10px] uppercase tracking-widest text-fg-subtle">
-                      {p.source}
-                      {p.track_count != null &&
-                        ` · ${p.done_count ?? 0}/${p.track_count} done`}
-                      {p.active_count != null && p.active_count > 0 &&
-                        ` · ${p.active_count} active`}
-                    </div>
-                  </div>
-                  <ArrowRight className="h-4 w-4 text-fg-subtle transition-all group-hover:translate-x-0.5 group-hover:text-fg" />
-                </Link>
-              </motion.div>
-            ))}
-            {recents && recents.length === 0 && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="rounded-xl border border-dashed border-border bg-bg-subtle/30 p-8 text-center"
-              >
-                <p className="text-sm text-fg-muted">
-                  Nothing imported yet. Paste a link above to get started.
-                </p>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      </section>
+      {recents && recents.length > 0 && (
+        <Link
+          href="/queue"
+          className="mt-8 flex items-center justify-between rounded-xl border border-accent/30 bg-accent/5 px-5 py-4 transition-colors hover:bg-accent/10"
+        >
+          <div>
+            <div className="font-mono text-[10px] uppercase tracking-widest text-accent">
+              Live activity
+            </div>
+            <div className="mt-0.5 text-sm text-fg">
+              {recents.length} import{recents.length === 1 ? "" : "s"} in flight — open the Queue to watch downloads.
+            </div>
+          </div>
+          <ArrowRight className="h-4 w-4 text-accent" />
+        </Link>
+      )}
     </PageShell>
   );
 }

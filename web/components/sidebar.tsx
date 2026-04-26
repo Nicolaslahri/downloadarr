@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   Activity,
-  Disc3,
+  History,
   Library,
   Settings as SettingsIcon,
   Sparkles,
@@ -13,10 +13,10 @@ import {
 import { cn } from "@/lib/cn";
 
 const NAV = [
-  { href: "/", label: "Import", icon: Sparkles },
-  { href: "/playlists", label: "Playlists", icon: Disc3 },
-  { href: "/jobs", label: "Jobs", icon: Activity },
+  { href: "/", label: "Add", icon: Sparkles },
+  { href: "/queue", label: "Queue", icon: Activity },
   { href: "/library", label: "Library", icon: Library },
+  { href: "/history", label: "History", icon: History },
   { href: "/settings", label: "Settings", icon: SettingsIcon },
 ];
 
@@ -31,7 +31,7 @@ export function Sidebar() {
         </div>
         <div className="leading-none">
           <div className="font-semibold tracking-tight">MusicDownloadarr</div>
-          <div className="font-mono text-[10px] uppercase tracking-widest text-fg-subtle">v0.1.0</div>
+          <div className="font-mono text-[10px] uppercase tracking-widest text-fg-subtle">v0.2.0</div>
         </div>
       </Link>
 
@@ -71,7 +71,7 @@ export function Sidebar() {
             Live
           </div>
           <p className="text-[11px] leading-relaxed text-fg-muted">
-            Background jobs stream over SSE. Open the Jobs tab to watch them.
+            Background activity streams over SSE. The Queue tab shows everything currently in flight.
           </p>
         </div>
       </div>

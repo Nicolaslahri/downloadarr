@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import jobs, library, playlists, settings as settings_api, tracks
+from app.api import jobs, library, playlists, queue as queue_api, settings as settings_api, tracks
 from app.config import settings as env_settings
 from app.db.session import init_db
 from app.services.events import bus
@@ -37,6 +37,7 @@ app.include_router(playlists.router)
 app.include_router(tracks.router)
 app.include_router(jobs.router)
 app.include_router(library.router)
+app.include_router(queue_api.router)
 app.include_router(settings_api.router)
 
 

@@ -13,6 +13,7 @@ from app.db.settings_store import load_all, merge_with_env
 from app.downloaders import pick as pick_downloader
 from app.indexers import search_all
 from app.indexers.base import Candidate, SourceKind
+from app.pipeline.filters import filter_candidates
 from app.pipeline.organize import organize
 from app.pipeline.score import rank
 from app.pipeline.tag import tag_file
@@ -134,7 +135,23 @@ async def process_track(track_id: int) -> None:
         )
         return
 
-    candidates = await search_all(rt, cfg)
+    raw_candidates = await search_all(rt, cfg)
+    candidates, rejected = filter_candidates(raw_candidates, rt)
+
+    if rejected:
+        sample = rejected[:5]
+        for cand, reason in sample:
+            bus.emit(
+                "log",
+                f"#{track_id} reject: {cand.title!r} — {reason}",
+                level="warn",
+            )
+        if len(rejected) > 5:
+            bus.emit(
+                "log",
+                f"#{track_id} reject: …{len(rejected) - 5} more candidates filtered",
+                level="warn",
+            )
 
     profile = cfg.get("quality_profile") or "best"
     preferred = [s for s in (cfg.get("preferred_sources") or "").split(",") if s]

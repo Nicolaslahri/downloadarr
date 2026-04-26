@@ -127,3 +127,26 @@ export interface LibraryEntry {
   size_bytes: number;
   format: string;
 }
+
+export interface TrackInQueue {
+  id: number;
+  playlist_id: number;
+  playlist_name: string;
+  playlist_source: string;
+  artist: string;
+  title: string;
+  album: string | null;
+  duration_s: number | null;
+  status: TrackStatus;
+  error: string | null;
+  track_no?: number | null;
+  year?: number | null;
+  bytes_done: number;
+  bytes_total: number;
+  speed_kbps: number;
+  quality_format?: string | null;
+  quality_bitrate?: number | null;
+  quality_lossless?: boolean;
+  file_path?: string | null;
+  updated_at: string;
+}

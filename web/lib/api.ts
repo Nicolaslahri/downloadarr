@@ -74,6 +74,11 @@ export const api = {
 
   listLibrary: () => jfetch<LibraryEntry[]>("/library"),
 
+  getQueue: () => jfetch<import("./types").TrackInQueue[]>("/queue"),
+
+  getHistory: (limit = 200) =>
+    jfetch<import("./types").TrackInQueue[]>(`/history?limit=${limit}`),
+
   getSettings: () => jfetch<AppSettings>("/settings"),
 
   updateSettings: (patch: SettingsUpdate) =>
